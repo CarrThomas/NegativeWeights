@@ -600,3 +600,432 @@ results %>% ggplot() +
   theme_bw() +
   theme(legend.position = "null") +
   labs(x = "", y = "L2P error") 
+
+
+############################## ROUGH MODEL ##############################
+
+rm(list = ls())
+gc()
+
+# X takes three values
+# Fix E[Z] and E[XZ], get covariance
+n <- 3
+p <- 1 / n
+a <- 1
+b <- 3
+E_X <- (b + a) / 2
+V_X <- sum(p * (a:b - E_X) ^ 2)
+sd_X <- sqrt(V_X)
+
+E_Z <- 1 / 2
+V_Z <- E_Z * (1 - E_Z)
+sd_Z <- sqrt(V_Z) 
+corr_XZ <- 1 / 2  
+cov_XZ <- corr_XZ * sd_X * sd_Z
+E_XZ <- cov_XZ + E_Z * E_X
+
+# back out probabilities from parameters
+d_2 <- seq(0, 1, length.out = 101)
+
+A <- E_Z - p * d_2
+B <- E_XZ - p * 2 * d_2
+
+e_2 <- d_2 - (g_0 + g_1 * 2)
+
+d_a <- (b * A - B) / (p * (b - a))
+d_b <- (B - a * A) / (p * (b - a))
+
+data.frame(d_2 = d_2, d_a = d_a, d_b = d_b) %>% ggplot() + 
+  geom_line(aes(x = d_2, y = d_a, col = "d_a")) +
+  geom_line(aes(x = d_2, y = d_b, col = "d_b")) + 
+  theme_bw()
+
+# check
+ind_1 <- as.logical((d_a >= 0) * (d_a <= 1))
+ind_2 <- as.logical((d_b >= 0) * (d_b <= 1))
+valid <- (1:101)[as.logical(ind_1 * ind_2)]
+
+i <- valid[sample(1:length(valid), 1)]
+
+d <- c(d_a[i], d_2[i], d_b[i])
+
+N <- 100000
+X <- sample(1:3, N, replace = T, prob = rep(1 / 3, 3))
+X <- sort(X)
+change <- X[1:(N-1)] != X[2:N]
+first <- c(1, (2:N)[change])
+last <- c((1:(N-1))[change], N)
+
+Z <- rep(0, N)
+
+for (j in 1:3){
+  
+  Z[first[j]:last[j]] <- rbinom(last[j] + 1 - first[j], 1, d[j])
+  
+}
+
+data <- data.frame(Z = Z, X = X)
+mean(X * Z)
+E_XZ
+mean(Z)
+E_Z
+
+# figure out the L2 approximation error in each case
+g_1 <- (E_XZ - E_X * E_Z) / V_X
+g_0 <- E_Z - g_1 * E_X
+
+L2 <- rep(0, length(d_a))
+
+for (i in 1:length(d_a)){
+  
+  e <- c(d_a[i] - g_0 - g_1 * a,
+         d_2[i] - g_0 - g_1 * 2,
+         d_b[i] - g_0 - g_1 * b)
+  
+  L2[i] <- sqrt(sum(p * e ^ 2))
+  
+}
+
+data.frame(d_2 = d_2, L2 = L2) %>% ggplot() + 
+  geom_line(aes(x = d_2, y = L2, col = "L2")) +
+  theme_bw()
+
+e_2 <- d_2 - (g_0 + g_1 * 2)
+e_a <- d_a - (g_0 + g_1 * a)
+e_b <- d_b - (g_0 + g_1 * b)
+
+# Second stage
+# need P(D = 1|X, Z) -> six values, all bounded between 0 and 1
+
+############################# SECOND ATTEMPT #############################
+
+rm(list = ls())
+gc()
+
+# x = (-1, 0, 1) with equal probability
+X_vals <- c(-1, 0, 1)
+
+n <- 100000
+X <- sample(c(-1, 0, 1), n, replace = T)
+X <- sort(X)
+ind <- (1:(n - 1))[X[1:(n - 1)] != X[2:n]]
+first <- c(1, ind + 1)
+last <- c(ind, n)
+
+#### E[Z|X] ####
+
+# linear part
+d_0 <- 1 / 2
+d_1 <- 0
+
+# non-linear part
+e <- rep(0, 3)
+e[2] <- -0.1
+e[1] <- -e[2] / 2
+e[3] <- e[1]
+
+# generate Z
+Z <- rep(0, n)
+
+for (i in 1:3){
+  
+  p <- d_0 + d_1 * X_vals[i] + e[i]
+  n_X <- last[i] + 1 - first[i]
+  Z[first[i]:last[i]] <- rbinom(n_X, 1, p)
+  
+}
+
+# check that everything is working properly
+for (i in 1:3){
+  
+  p <- d_0 + d_1 * X_vals[i] + e[i]
+  print(mean(Z[first[i]:last[i]]) - p)
+  
+}
+
+lm(Z ~ X, data = data.frame(Z = Z, X = X))$coefficients
+c(d_0, d_1)
+
+# Construct P(D = 1|X) so that E[D(E[Z|X] - L[Z|X])] = 0
+Delta <- rep(0, 3)
+Delta[2] <- 0.1
+Delta[1] <- -Delta[2] / 2
+Delta[3] <- Delta[1]
+
+a <- rep(0, 3)
+a[2] <- - e[2] ^ 2 * Delta[2] / e[2]
+
+
+############################# THIRD ATTEMPT #############################
+
+rm(list = ls())
+gc()
+
+# x = (-1, 0, 1) with equal probability
+X_vals <- c(-4, 0, 8)
+
+n <- 100000
+X <- sample(c(-1, 0, 1), n, replace = T)
+X <- sort(X)
+ind <- (1:(n - 1))[X[1:(n - 1)] != X[2:n]]
+first <- c(1, ind + 1)
+last <- c(ind, n)
+
+#### E[Z|X] ####
+
+# linear part
+d_0 <- 1 / 2
+d_1 <- 0
+
+# non-linear part
+w <- (X_vals[3] - X_vals[2]) / (X_vals[3] - X_vals[1])
+e <- rep(0, 3)
+e[2] <- -0.1
+e[1] <- -w * e[2]
+e[3] <- - (1 - w) * e[2]
+
+# generate Z
+Z <- rep(0, n)
+
+for (i in 1:3){
+  
+  p <- d_0 + d_1 * X_vals[i] + e[i]
+  n_X <- last[i] + 1 - first[i]
+  Z[first[i]:last[i]] <- rbinom(n_X, 1, p)
+  
+}
+
+# check that everything is working properly
+for (i in 1:3){
+  
+  p <- d_0 + d_1 * X_vals[i] + e[i]
+  print(mean(Z[first[i]:last[i]]) - p)
+  
+}
+
+lm(Z ~ X, data = data.frame(Z = Z, X = X))$coefficients
+c(d_0, d_1)
+
+# Solve for Delta
+A <- rbind(c(w, 1 - w), c(w ^ 2, (1 - w) ^ 2))
+a <- rep(0, 3)
+a[2] <- 0.1
+a[c(1, 3)] <- as.vector(solve(A) %*% as.matrix(c(a[2], -a[2]), 2, 1))
+a
+
+# Numerator
+
+############################# FOURTH ATTEMPT #############################
+
+rm(list = ls())
+gc()
+
+# x = (-2, -1, 1, 1) with equal probability
+X_vals <- c(-2, -1, 1, 2)
+n_vals <- length(X_vals)
+p <- 1 / n_vals
+
+d_0 = 1 / 2
+d_1 = 1 / 5
+
+# combinations of approximation errors giving the same L2(P) error
+
+# implicit weights
+w <- (X_vals[2:(n_vals - 1)] - X_vals[1]) / (X_vals[n_vals] - X_vals[1])
+w <- c(0, w, 0)
+
+# Form the matrix
+A <- p * ((1 - w[2]) ^ 2 + 1 + w[2] ^ 2)
+B <- 2 * p * ((1 - w[2]) * (1 - w[3]) + w[2] * w[3])
+C <- p * ((1 - w[3]) ^ 2 + 1 + w[3] ^ 2)
+
+# Our equation is 
+# A e_2 ^ 2 + B e_2 e_3 + C e_3 ^ 2 = xi ^ 2
+# Want to transform this into an ellipse
+
+mat <- rbind(c(A, B / 2),
+             c(B / 2, C))
+# Write this equation as
+# e^T mat e = xi ^ 2
+# where e = (e_2, e_3) is a column vector
+
+e_decomp <- eigen(mat)
+
+# the matrix is decomposed as
+# V %*% D %*% t(V)
+# V is e_decomp$vectors, the columns of V are the eigenvectors
+# D is a diagonal matrix whose entries are the eigenvalues
+
+# We then have
+# t(e) %*% V %*% D %*% t(V) %*% e = xi ^ 2
+# (t(e) %*% V) %*% D %*% (t(V) %*% e) = xi ^ 2
+# where t(e) %*% V = (x y) are our transformed variables. Thus
+# (x y) %*% D %*% t(x y) = D[1, 1] * x ^ 2 + D[2, 2] * y ^ 2 
+
+# the equation for an ellipse is
+# (x ^ 2 / a ^ 2) + (y ^ 2 / b ^ 2) = 1
+# Hence, for us
+# a = sqrt(xi ^ 2 / D[1, 1])
+# b = sqrt(xi ^ 2 / D[2 , 2])
+xi <- 0.05
+a <- xi / sqrt(e_decomp$values[1])
+b <- xi / sqrt(e_decomp$values[2])
+
+# The ellipse can be traced out as
+# (x, y) = (a cos(t), b sin (t))
+t <- seq(0, 2 * pi, length.out = 101)
+x <- a * cos(t)
+y <- b * sin(t)
+
+e <- cbind(x, y) %*% t(e_decomp$vectors)
+plot(e[, 1], e[, 2], type = "l")
+
+# verify the conditions hold
+e1 <- -((1 - w[2]) * e[, 1] + (1 - w[3]) * e[, 2])
+e4 <- -(w[2] * e[, 1] + w[3] * e[, 2])
+e <- cbind(e1, e, e4)
+rowSums(e ^ 2) * p 
+xi ^ 2
+
+par(mfrow = c(2, 2))
+
+plot(e[, 2], e[, 1], type = "l")
+plot(e[, 2], e[, 3], type = "l")
+plot(e[, 2], e[, 4], type = "l")
+
+par(mfrow = c(1, 1))
+
+# add in constraints
+E_Z <- d_0 + matrix(X_vals * d_1, nrow(e), 4, byrow = T) + e
+l_cons <- apply(E_Z, 1, function(x){return(min(x) >= 0)})
+u_cons <- apply(E_Z, 1, function(x){return(max(x) <= 1)})
+cons <- u_cons * l_cons
+cons
+
+# plots with the feasible sections highlighted
+plot(e[, 2], e[, 1], type = "l")
+lines(e[as.logical(cons), 2], e[as.logical(cons), 1], col = "red")
+
+plot(e[, 2], e[, 3], type = "l")
+lines(e[as.logical(cons), 2], e[as.logical(cons), 3], col = "red")
+
+plot(e[, 2], e[, 4], type = "l")
+lines(e[as.logical(cons), 2], e[as.logical(cons), 4], col = "red")
+
+# Calculate the C and D coefficients
+C <- p * e
+D <- p * e * E_Z
+
+# caculate the norm
+norm <- sqrt(rowSums(C ^ 2) + rowSums(D ^ 2))
+
+plot(1:length(norm), norm)
+points((1:length(norm))[as.logical(cons)], norm[as.logical(cons)], col = "red")
+
+par(mfrow = c(2, 2))
+
+plot(e[, 2], norm, type = "l")
+lines(e[as.logical(cons), 2], norm[as.logical(cons)], col = "red")
+
+plot(e[, 2], e[, 1], type = "l")
+lines(e[as.logical(cons), 2], e[as.logical(cons), 1], col = "red")
+
+plot(e[, 2], e[, 3], type = "l")
+lines(e[as.logical(cons), 2], e[as.logical(cons), 3], col = "red")
+
+plot(e[, 2], e[, 4], type = "l")
+lines(e[as.logical(cons), 2], e[as.logical(cons), 4], col = "red")
+
+par(mfrow = c(1, 1))
+
+y_lim <- c(min(e) - 0.01, max(e) + 0.01)
+plot(e[, 2], e[, 1], type = "l", ylim = y_lim)
+lines(e[, 2], e[, 3], col = "red")
+lines(e[, 2], e[, 4], col = "blue")
+
+par(mfrow = c(2, 2))
+
+plot(norm, e[, 1], type = "l")
+plot(norm, e[, 2], type = "l")
+plot(norm, e[, 3], type = "l")
+plot(norm, e[, 4], type = "l")
+
+par(mfrow = c(1, 1))
+
+# Plot out points
+# maximum and minimum second stage norms
+min_ind <- which.min(norm)
+max_ind <- which.max(norm)
+
+# E[Z|X] function
+plot(X_vals, d_0 + d_1 * X_vals, type = "l")
+points(X_vals, d_0 + d_1 * X_vals + e[min_ind, ], col = "red")
+points(X_vals, d_0 + d_1 * X_vals + e[max_ind, ], col = "blue")
+
+data <- data.frame(X = X_vals, 
+                   linear = d_0 + d_1 * X_vals, 
+                   min = d_0 + d_1 * X_vals + e[min_ind, ],
+                   max = d_0 + d_1 * X_vals + e[max_ind, ])
+
+data %>% ggplot() + 
+  geom_line(aes(x = X, y = linear, col = "linear approximation")) +
+  geom_point(aes(x = X, y = min, col = "maximum width")) +
+  geom_point(aes(x = X, y = max, col = "minimum width")) + 
+  theme_bw() + 
+  theme(legend.title = element_blank())
+
+
+#### Implied polynomial ####
+Vandermode <- cbind(rep(1, n_vals), X_vals, X_vals ^ 2, X_vals ^ 3)
+coefs <- matrix(0, nrow(E_Z), ncol(E_Z))
+for (i in 1:nrow(coefs)){
+  
+  coefs[i, ] <- solve(Vandermode, E_Z[i, ])
+  
+}
+
+par(mfrow = c(2, 2))
+
+plot(norm, coefs[, 1])
+plot(norm, coefs[, 2])
+plot(norm, coefs[, 3])
+plot(norm, coefs[, 4])
+
+par(mfrow = c(1, 1))
+
+y_lim <- c(min(coefs) - 0.05, max(coefs) + 0.05)
+
+plot(norm, coefs[, 1], type = "l", ylim = y_lim)
+lines(norm, coefs[, 2], col = "blue")
+lines(norm, coefs[, 3], col = "red")
+lines(norm, coefs[, 4], col = "green")
+
+# check on the calculations
+N <- 100000
+X <- sample(X_vals, N, replace = T)
+X <- sort(X)
+
+e_dist <- rep(0, n_vals)
+for (i in 1:n_vals){
+  
+  e_dist[i] <- sum(X == X_vals[i])
+  
+}
+
+Z <- rep(0, N)
+bot <- 1
+top <- e_dist[1]
+
+j <- 1
+
+for (i in 1:4){
+  
+ Z[bot:top] <- rbinom(e_dist[i], 1, E_Z[j, i])  
+ bot <- bot + e_dist[i]
+ top <- top + e_dist[i + 1]
+  
+}
+
+data <- data.frame(X = X, Z = Z)
+lm(Z ~ X, data = data)$coefficients
+c(d_0, d_1)
