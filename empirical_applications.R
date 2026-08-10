@@ -14,6 +14,8 @@ library(AER)
 
 ################################ CARD (1993) ################################
 
+#### SETUP ####
+
 set.seed(1993)
 
 # Load in the data
@@ -47,6 +49,115 @@ varlist <- c("exper", "expersq", "black", "smsa", "south", "smsa66", "reg661",
              "motheduc", "fatheduc", "motheduc_na","fatheduc_na", "edclass1", 
              "edclass2", "edclass3", "edclass4", "edclass5", "edclass6", 
              "edclass7", "edclass8", "momdad14", "sinmom14")
+
+
+#### WEIGHTS ####
+
+# Weights should be obtained as cell-by-cell covariances between the treatment
+# and the orthogonalised instrument. 
+
+# Generate the orthogonalised instrument
+Z_hat <- lm(as.formula(paste0("Z ~ ", paste(varlist, collapse = " + "))),
+            data = card)$fitted.values
+Z_tilde <- card$Z - Z_hat
+card$Z_tilde <- Z_tilde
+
+# Combine all controls apart from potential experience into a single categorical
+# variable
+binary_names <- c(paste0("edclass", 1:8),
+                  paste0("reg", 661:668),
+                  "sinmom14",
+                  "momdad14",
+                  "black", 
+                  "smsa", 
+                  "south", 
+                  "smsa66", 
+                  "motheduc_na", 
+                  "fatheduc_na")
+combined <- apply(card[, binary_names], 1, paste, collapse = "_")
+combined_vals <- unique(combined)  
+
+card$combined <- combined
+
+n_vals <- length(combined_vals)
+cells <- matrix(0, nrow(card), 2)
+row_index <- 1
+
+Z_tilde_mean <- mean(card$Z_tilde)
+card$D_Z_tilde <- card$D * card$Z_tilde
+
+for (i in 1:n_vals){
+  
+  ind <- card$combined == combined_vals[i]
+  
+  exper_vals <- unique(card[ind, ]$exper)
+  
+  for (j in 1:length(exper_vals)){
+    
+    ind_final <- as.logical(ind * (card$exper == exper_vals[j]))
+    
+    cells[row_index, 1] <- sum(ind_final)
+    
+    cells[row_index, 2] <- sum(card[ind_final, ]$D_Z_tilde)
+    
+    # cells[row_index, 2] <- mean(ind_final * card$D * card$Z_tilde) -
+    #   mean(ind_final * card$D) * Z_tilde_mean
+
+    row_index <- row_index + 1
+    
+  }
+  
+}
+
+# total observations
+n <- nrow(card)
+
+# check
+sum(cells[, 2]) / (n - 1)
+cov(card$D, card$Z_tilde)  
+
+plot(density(cells[, 2]))
+
+# remove redundant elements from the cells matrix
+cells <- cells[cells[, 1] > 0, ]
+nrow(cells) # number of unique cells observed in the sample
+
+nrow(cells[cells[, 2] > 0, ]) # number of cells with positive weights
+nrow(cells[cells[, 2] < 0, ]) # number of cells with negative weights
+nrow(cells[cells[, 2] == 0, ]) # number of cells with zero weight
+
+sum(cells[(cells[, 2] > 0), 1]) # observations in positive cells
+sum(cells[(cells[, 2] < 0), 1]) # observations in negative cells
+sum(cells[(cells[, 2] == 0), 1]) # observations in zero cells
+
+# Nice plot of the density
+base_density <- density(cells[, 2])
+
+plot_data <- data.frame(x = base_density$x, y = base_density$y)
+low_cutoff <- quantile(plot_data$x, 0.05)
+high_cutoff <- quantile(plot_data$x, 0.95)
+plot_data <- dplyr::filter(plot_data, x > low_cutoff)
+plot_data <- dplyr::filter(plot_data, x < high_cutoff)
+
+plot_data %>% ggplot() + 
+  geom_line(aes(x = x, y = y, col = "density")) + 
+  geom_vline(xintercept = 0, linetype = "dashed") + 
+  theme_bw() + 
+  theme(legend.position = "null") +
+  labs(x = "weight", y = "")
+
+
+lm("D ~ Z_tilde", data = card)
+cov(card$D, card$Z_tilde) / var(card$Z_tilde)
+sum(cells[, 2]) / (var(card$Z_tilde) * (n - 1) / n) 
+
+names(cells) <- c("count", "weight")
+cells <- data.frame(cells)
+
+cells %>% ggplot() + 
+  geom_density(aes(x = weight, col = "density")) + 
+  theme_bw() + 
+  theme(legend.position = "null")
 
 # First stage with no interactions
 no_interactions <- lm(as.formula(paste0("D ~ Z + ", 
