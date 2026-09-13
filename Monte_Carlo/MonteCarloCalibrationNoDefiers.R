@@ -49,9 +49,9 @@ get_sd_Z <- function(Ep_Z, sd_Xt){
 
 #################################### TUNING ####################################
 
-targets <- list(Ep_Z0 = 0.45, # E[p(X, Z = 0)]
-                sd_Z0 = 0.1, # sd(p(X, Z = 0))
-                C_share = 0.1) # share of compliers
+targets <- list(Ep_Z0 = 0.4, # E[p(X, Z = 0)]
+                sd_Z0 = 0.15, # sd(p(X, Z = 0))
+                C_share = 0.2) # share of compliers
 
 e_tol <- 0.00000001
 
@@ -128,3 +128,66 @@ sqrt(pmvnorm(upper = c(0, 0),
        pnorm(0, mean = -a_0, sd = sqrt(1 + sd_a ^ 2)) ^ 2)
 targets$sd_Z0
 sd(P_x0)
+
+###################### BLOCK TWO APPROXIMATE CALIBRATION #######################
+
+zeta_0 <- 0.1
+B_0 <- 0
+sd_B <- 0.45
+pZ <- 0.5
+
+B <- runif(k, -1, 1)
+B <- B * sd_B / sqrt(sum(B ^ 2))
+
+sigma <- diag(1, 3, 3)
+sigma[1, 2:3] <- c(0.6, -0.4)
+sigma[2:3, 1] <- sigma[1, 2:3]
+colnames(sigma) <- c("V", "U_1", "U_0")
+
+# Obtain the uncorrected TSLS estimate
+Z <- rbinom(n, 1, pZ)
+U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
+colnames(U) <- c("V", "U1", "U0")
+U <- data.frame(U)
+
+index <- a_0 + X %*% as.matrix(a, k, 1) + Z * d_0
+D <- as.numeric(index  > U[, 1])
+
+# Outcomes
+Y_0 <- B_0 + U$U0
+Y_1 <- B_0 + zeta_0 + U$U1
+Y <- (1 - D) * Y_0 + D * Y_1
+
+# OLS bias
+data <- data.frame(Y = Y, D = D)
+OLS <- lm("Y ~ D", data = data)
+zeta_hat <- OLS$coefficients[2]
+bias <- zeta_hat - zeta_0
+bias
+
+# TSLS estimate
+Z_tilde <- Z - mean(Z)
+cov(Y, Z_tilde) / cov(D, Z_tilde)
+
+################################## SAVE OUTPUT #################################
+
+path <- getwd()
+save_path <- paste0(path, "/Monte_Carlo")
+
+parameters <- list(a_0 = a_0, 
+                   d_0 = d_0,
+                   sd_a = sd_a,
+                   B_0 = B_0,
+                   zeta_0 = zeta_0, 
+                   sd_B = sd_B,
+                   sigma = sigma)
+
+saveRDS(parameters, file = paste0(path, "/Monte_Carlo/ParametersNoDefiers.rds"))
+
+# Generate a table of parameter values
+# temp <- unlist(parameters[!names(parameters) %in% "sigma"])
+# 
+# table <- data.frame(par = temp)
+# 
+# xtable(table, digits = 3)
+

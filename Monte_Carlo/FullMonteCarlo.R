@@ -239,8 +239,13 @@ for (j in 1:length(N)){
                   data = data)$coefficients
     theta_lpm <- lpm_est[names(lpm_est) %in% varnames]
     
-    # Run the Nelder-Mead-Head simplex from each pilot, take the maximum
-    candidates <- vector(mode = "list", length = 3)
+    # Run the Nelder-Mead-Head simplex from each pilot (probit, logit, lpm), 
+    # random perturbations of each pilot, and random points, take the maximum
+    
+    # 3 pilot points
+    n_perturb <- 5 # n_perturb random perturbations of each pilot point
+    n_random <- 20 # n_random randomly generated starting points
+    candidates <- vector(mode = "list", length = 3 + 3 * n_perturb + n_random)
     
     candidates[[1]] <- optim(par = theta_probit, 
                              fn = S_theta, 
@@ -263,6 +268,66 @@ for (j in 1:length(N)){
                              varnames = varnames, 
                              control = list("fnscale" = -1))
     
+    # perturbations of theta probit
+    theta_probit <- theta_probit / sqrt(sum(theta_probit ^ 2))
+    for (p in 1:n_perturb){
+      probit_perturbed <- theta_probit * 
+        sample(c(0.9, 1.1), length(theta_probit), replace = TRUE)
+      candidates[[3 + p]] <- optim(par = probit_perturbed, 
+                                   fn = S_theta, 
+                                   method = "Nelder-Mead", 
+                                   data = data, 
+                                   varnames = varnames, 
+                                   control = list("fnscale" = -1))
+    }
+    
+    # perturbations of theta logit
+    theta_logit <- theta_logit / sqrt(sum(theta_logit ^ 2))
+    for (p in 1:n_perturb){
+      
+      logit_perturbed <- theta_logit * 
+        sample(c(0.9, 1.1), length(theta_logit), replace = TRUE)
+      
+      candidates[[3 + n_perturb + p]] <- optim(par = logit_perturbed, 
+                                               fn = S_theta, 
+                                               method = "Nelder-Mead", 
+                                               data = data, 
+                                               varnames = varnames, 
+                                               control = list("fnscale" = -1))
+    }
+    
+    # perturbations of theta lpm
+    theta_lpm <- theta_lpm / sqrt(sum(theta_lpm ^ 2))
+    for (p in 1:n_perturb){
+      
+      lpm_perturbed <- theta_lpm * 
+        sample(c(0.9, 1.1), length(theta_lpm), replace = TRUE)
+      
+      candidates[[3 + (2 * n_perturb) + p]] <- 
+        optim(par = lpm_perturbed, 
+              fn = S_theta, 
+              method = "Nelder-Mead", 
+              data = data, 
+              varnames = varnames, 
+              control = list("fnscale" = -1))
+    }
+    
+    # randomly generated starting points
+    for (p in 1:n_random){
+      
+      theta_random <- runif(length(theta_probit), -1, 1) 
+      theta_random <- theta_random / sqrt(sum(theta_random ^ 2))
+      
+      candidates[[3 + (3 * n_perturb) + p]] <- 
+        optim(par = theta_random, 
+              fn = S_theta, 
+              method = "Nelder-Mead", 
+              data = data, 
+              varnames = varnames, 
+              control = list("fnscale" = -1))
+      
+    }
+    
     # Choose the best performing value
     i <- which.max(sapply(candidates, getElement, "value"))
     theta_hat <- candidates[[i]]$par
@@ -283,6 +348,9 @@ for (j in 1:length(N)){
     # corrected TSLS
     oracle[r] <- sum(Y, s_star * Z_tilde) / sum(D, s_star * Z_tilde)
     corrected[r] <- sum(Y, s_hat * Z_tilde) / sum(D, s_hat * Z_tilde)
+    probit[r] <- sum(Y, s_probit * Z_tilde) / sum(D, s_probit * Z_tilde)
+    logit[r] <- sum(Y, s_logit * Z_tilde) / sum(D, s_logit * Z_tilde)
+    lpm[r] <- sum(Y, s_lpm * Z_tilde) / sum(D, s_lpm * Z_tilde)
     tsls[r] <- cov(Y, Z_tilde) / cov(D, Z_tilde)
     
     # Diagnostics
@@ -295,13 +363,16 @@ for (j in 1:length(N)){
   run_results <- list(oracle = oracle, 
                       corrected = corrected,
                       tsls = tsls, 
+                      probit = probit,
+                      logit = logit,
+                      lpm = lpm,
                       diagnostics = diagnostics)
   
   results[[j]] <- run_results
   
 }
 
-names(results) <- n
+names(results) <- N
 
 saveRDS(results, file = paste0(path, "/Monte_Carlo/results.rds"))
 
@@ -318,16 +389,22 @@ for (i in 1:sims){
   
   plot_data <- data.frame(tsls = results[[i]]$tsls, 
                           oracle = results[[i]]$oracle, 
-                          corrected = results[[i]]$corrected)
+                          corrected = results[[i]]$corrected,
+                          probit = results[[i]]$probit,
+                          logit = results[[i]]$logit,
+                          lpm = results[[i]]$lpm)
   
-  plot_data %>% ggplot() + 
-    geom_density(aes(x = tsls, col = "TSLS")) + 
-    geom_density(aes(x = corrected, col = "corrected")) + 
-    geom_density(aes(x = oracle, col = "oracle"))
+  # plot_data %>% ggplot() + 
+  #   geom_density(aes(x = tsls, col = "TSLS")) + 
+  #   geom_density(aes(x = corrected, col = "corrected")) + 
+  #   geom_density(aes(x = oracle, col = "oracle"))
   
   plot_data %>% ggplot() + 
     geom_density(aes(x = corrected, col = "corrected")) + 
     geom_density(aes(x = oracle, col = "oracle")) +
+    geom_density(aes(x = probit, col = "probit")) + 
+    geom_density(aes(x = logit, col = "logit")) +
+    geom_density(aes(x = lpm, col = "lpm")) + 
     theme_bw() +
     theme(legend.title = element_blank()) +
     labs(x = "Estimate", y = "")
@@ -336,7 +413,7 @@ for (i in 1:sims){
 
 
 # Summary statistics
-table <- matrix(0, 3 * sims, 7)
+table <- matrix(0, 6 * sims, 7)
 
 get_stats <- function(results){
   
@@ -349,7 +426,7 @@ get_stats <- function(results){
   
 }
 
-rownames(table) <- rep(N, 3)
+rownames(table) <- rep(N, 6)
 table[1:sims, ] <- 
   t(sapply(1:sims, 
            function(i, results){get_stats(getElement(results[[i]], "tsls"))},
@@ -362,11 +439,26 @@ table[2 * sims + 1:sims, ] <-
   t(sapply(1:sims, 
            function(i, results){get_stats(getElement(results[[i]], "oracle"))},
            results = results))
+table[3 * sims + 1:sims, ] <- 
+  t(sapply(1:sims, 
+           function(i, results){get_stats(getElement(results[[i]], "probit"))},
+           results = results))
+table[4 * sims + 1:sims, ] <- 
+  t(sapply(1:sims, 
+           function(i, results){get_stats(getElement(results[[i]], "logit"))},
+           results = results))
+table[5 * sims + 1:sims, ] <- 
+  t(sapply(1:sims, 
+           function(i, results){get_stats(getElement(results[[i]], "lpm"))},
+           results = results))
 
-xtable(table[1:sims, ], digits = 3)
-xtable(table[sims + 1:sims, ], digits = 3)
-xtable(table[2 * sims + 1:sims, ], digits = 3)
 
+xtable(table[1:sims, ], digits = 3) # tsls
+xtable(table[sims + 1:sims, ], digits = 3) # corrected
+xtable(table[2 * sims + 1:sims, ], digits = 3) # oracle
+xtable(table[3 * sims + 1:sims, ], digits = 3) # probit
+xtable(table[4 * sims + 1:sims, ], digits = 3) # logit
+xtable(table[5 * sims + 1:sims, ], digits = 3) # lpm
 
 # 
 # ########################### BOOTSTRAP STANDARD ERRORS ##########################

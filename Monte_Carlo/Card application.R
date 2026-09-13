@@ -51,7 +51,6 @@ get_s_hat <- function(theta_hat, data){
   
 }
 
-
 S_theta <- function(theta, data, varnames){
   
   theta <- theta / sqrt(sum(theta ^ 2))
@@ -61,17 +60,6 @@ S_theta <- function(theta, data, varnames){
   val <- sum(tally[as.logical(D_sort)])
   
   return(val)
-  
-}
-
-
-probit_version <- function(data, indices, varnames){
-  
-  # select data
-  boot_data <- data[indices, ]
-  
-  # probit
-  
   
 }
 
@@ -233,7 +221,7 @@ lpm <- vector(mode = "list", length = 5)
 mrc <- vector(mode = "list", length = 5)
 
 # number of boostrap draws
-B <- 10 
+B <- 500 
 
 for (i in 1:5){
   
@@ -363,9 +351,14 @@ for (i in 1:5){
   theta_lpm <- 
     lpm_est$coefficients[!names(lpm_est$coefficients) %in% "(Intercept)"]
   
+  
   # Run the Nelder-Mead-Head simplex from each pilot, take the maximum
-  candidates <- vector(mode = "list", length = 3)
+  n_perturb <- 5 # n_perturb random perturbations of each pilot point
+  n_random <- 10 # n_random randomly generated starting points
+  
   temp_varlist <- names(theta_probit)
+  
+  candidates <- vector(mode = "list", length = 3 + 3 * n_perturb + n_random)
   
   candidates[[1]] <- optim(par = theta_probit, 
                            fn = S_theta, 
@@ -387,6 +380,66 @@ for (i in 1:5){
                            data = data, 
                            varnames = temp_varlist, 
                            control = list("fnscale" = -1))
+  
+  # perturbations of theta probit
+  theta_probit <- theta_probit / sqrt(sum(theta_probit ^ 2))
+  for (p in 1:n_perturb){
+    probit_perturbed <- theta_probit * 
+      sample(c(0.9, 1.1), length(theta_probit), replace = TRUE)
+    candidates[[3 + p]] <- optim(par = probit_perturbed, 
+                                 fn = S_theta, 
+                                 method = "Nelder-Mead", 
+                                 data = data, 
+                                 varnames = temp_varlist, 
+                                 control = list("fnscale" = -1))
+  }
+  
+  # perturbations of theta logit
+  theta_logit <- theta_logit / sqrt(sum(theta_logit ^ 2))
+  for (p in 1:n_perturb){
+    
+    logit_perturbed <- theta_logit * 
+      sample(c(0.9, 1.1), length(theta_logit), replace = TRUE)
+    
+    candidates[[3 + n_perturb + p]] <- optim(par = logit_perturbed, 
+                                             fn = S_theta, 
+                                             method = "Nelder-Mead", 
+                                             data = data, 
+                                             varnames = temp_varlist, 
+                                             control = list("fnscale" = -1))
+  }
+  
+  # perturbations of theta lpm
+  theta_lpm <- theta_lpm / sqrt(sum(theta_lpm ^ 2))
+  for (p in 1:n_perturb){
+    
+    lpm_perturbed <- theta_lpm * 
+      sample(c(0.9, 1.1), length(theta_lpm), replace = TRUE)
+    
+    candidates[[3 + (2 * n_perturb) + p]] <- 
+      optim(par = lpm_perturbed, 
+            fn = S_theta, 
+            method = "Nelder-Mead", 
+            data = data, 
+            varnames = temp_varlist, 
+            control = list("fnscale" = -1))
+  }
+  
+  # randomly generated starting points
+  for (p in 1:n_random){
+    
+    theta_random <- runif(length(theta_probit), -1, 1) 
+    theta_random <- theta_random / sqrt(sum(theta_random ^ 2))
+    
+    candidates[[3 + (3 * n_perturb) + p]] <- 
+      optim(par = theta_random, 
+            fn = S_theta, 
+            method = "Nelder-Mead", 
+            data = data, 
+            varnames = temp_varlist, 
+            control = list("fnscale" = -1))
+    
+  }
   
   # Choose the best performing value
   j <- which.max(sapply(candidates, getElement, "value"))
@@ -481,9 +534,10 @@ for (i in 1:5){
     boot_theta_lpm <- 
       boot_lpm_est$coefficients[!names(boot_lpm_est$coefficients) %in% "(Intercept)"]
     
-    # Run the Nelder-Mead-Head simplex from each pilot, take the maximum
-    candidates <- vector(mode = "list", length = 3)
     temp_varlist <- names(boot_theta_probit)
+    
+    # Run the Nelder-Mead-Head simplex from each pilot, take the maximum
+    candidates <- vector(mode = "list", length = 3 + 3 * n_perturb + n_random)
     
     candidates[[1]] <- optim(par = boot_theta_probit, 
                              fn = S_theta, 
@@ -505,6 +559,66 @@ for (i in 1:5){
                              data = boot_data, 
                              varnames = temp_varlist, 
                              control = list("fnscale" = -1))
+    
+    # perturbations of theta probit
+    boot_theta_probit <- boot_theta_probit / sqrt(sum(boot_theta_probit ^ 2))
+    for (p in 1:n_perturb){
+      probit_perturbed <- boot_theta_probit * 
+        sample(c(0.9, 1.1), length(boot_theta_probit), replace = TRUE)
+      candidates[[3 + p]] <- optim(par = probit_perturbed, 
+                                   fn = S_theta, 
+                                   method = "Nelder-Mead", 
+                                   data = boot_data, 
+                                   varnames = temp_varlist, 
+                                   control = list("fnscale" = -1))
+    }
+    
+    # perturbations of theta logit
+    boot_theta_logit <- boot_theta_logit / sqrt(sum(boot_theta_logit ^ 2))
+    for (p in 1:n_perturb){
+      
+      logit_perturbed <- boot_theta_logit * 
+        sample(c(0.9, 1.1), length(boot_theta_logit), replace = TRUE)
+      
+      candidates[[3 + n_perturb + p]] <- optim(par = logit_perturbed, 
+                                               fn = S_theta, 
+                                               method = "Nelder-Mead", 
+                                               data = boot_data, 
+                                               varnames = temp_varlist, 
+                                               control = list("fnscale" = -1))
+    }
+    
+    # perturbations of theta lpm
+    boot_theta_lpm <- boot_theta_lpm / sqrt(sum(boot_theta_lpm ^ 2))
+    for (p in 1:n_perturb){
+      
+      lpm_perturbed <- boot_theta_lpm * 
+        sample(c(0.9, 1.1), length(boot_theta_lpm), replace = TRUE)
+      
+      candidates[[3 + (2 * n_perturb) + p]] <- 
+        optim(par = lpm_perturbed, 
+              fn = S_theta, 
+              method = "Nelder-Mead", 
+              data = boot_data, 
+              varnames = temp_varlist, 
+              control = list("fnscale" = -1))
+    }
+    
+    # randomly generated starting points
+    for (p in 1:n_random){
+      
+      theta_random <- runif(length(boot_theta_probit), -1, 1) 
+      theta_random <- theta_random / sqrt(sum(theta_random ^ 2))
+      
+      candidates[[3 + (3 * n_perturb) + p]] <- 
+        optim(par = theta_random, 
+              fn = S_theta, 
+              method = "Nelder-Mead", 
+              data = boot_data, 
+              varnames = temp_varlist, 
+              control = list("fnscale" = -1))
+      
+    }
     
     # Choose the best performing value
     j <- which.max(sapply(candidates, getElement, "value"))
@@ -584,11 +698,17 @@ for (i in 1:5){
 
 rownames(temp_table) <- c(rep(stat_names, 3), c("tau", "sd", "share"))
 temp_table[seq(1, 13, by = 4), ]
-temp_table[seq(2, 14, by = 3), ]
+temp_table[seq(2, 14, by = 4), ]
 closeness
 
-temp_table
+xtable(temp_table, digits = 3)
 
 path = getwd()
+
+card_results <- list(tsls = tsls,
+                     probit = probit,
+                     logit = logit,
+                     lpm = lpm,
+                     mrc = mrc)
 
 saveRDS(card_results, file = paste0(path, "/card_results.rds"))
