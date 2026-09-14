@@ -300,6 +300,7 @@ for (j in 1:length(N)){
     # Choose the best performing value
     i <- which.max(sapply(candidates, getElement, "value"))
     theta_hat <- candidates[[i]]$par
+    names(theta_hat) <- names(candidates[[1]]$par)
     theta_hat <- theta_hat / sqrt(sum(theta_hat ^ 2)) # scale to be length 1
     
     s_hat <- sign(theta_hat["Z"] + X %*% 
@@ -313,13 +314,15 @@ for (j in 1:length(N)){
                     matrix(lpm_est[colnames(interactions)], k ,1))
     
     # Estimates
-    Z_tilde <- Z - mean(Z)
+    Z_hat <- lm(as.formula(paste0("Z ~ ", paste(paste0("X_", 1:k), collapse = " + "))),
+                data = data)$fitted.values
+    Z_tilde <- Z - Z_hat
     # corrected TSLS
-    oracle[r] <- sum(Y, s_star * Z_tilde) / sum(D, s_star * Z_tilde)
-    corrected[r] <- sum(Y, s_hat * Z_tilde) / sum(D, s_hat * Z_tilde)
-    probit[r] <- sum(Y, s_probit * Z_tilde) / sum(D, s_probit * Z_tilde)
-    logit[r] <- sum(Y, s_logit * Z_tilde) / sum(D, s_logit * Z_tilde)
-    lpm[r] <- sum(Y, s_lpm * Z_tilde) / sum(D, s_lpm * Z_tilde)
+    oracle[r] <- sum(Y * s_star * Z_tilde) / sum(D * s_star * Z_tilde)
+    corrected[r] <- sum(Y * s_hat * Z_tilde) / sum(D * s_hat * Z_tilde)
+    probit[r] <- sum(Y * s_probit * Z_tilde) / sum(D * s_probit * Z_tilde)
+    logit[r] <- sum(Y * s_logit * Z_tilde) / sum(D * s_logit * Z_tilde)
+    lpm[r] <- sum(Y * s_lpm * Z_tilde) / sum(D * s_lpm * Z_tilde)
     tsls[r] <- cov(Y, Z_tilde) / cov(D, Z_tilde)
     
     # Diagnostics
@@ -369,6 +372,7 @@ for (i in 1:sims){
   #   geom_density(aes(x = oracle, col = "oracle"))
   
   plot_data %>% ggplot() + 
+    geom_density(aes(x = tsls, col = "TSLS")) + 
     geom_density(aes(x = corrected, col = "corrected")) + 
     geom_density(aes(x = oracle, col = "oracle")) +
     geom_density(aes(x = probit, col = "probit")) + 
