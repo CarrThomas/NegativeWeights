@@ -126,7 +126,7 @@ N <- c(100, 500, 1000, 2000) # number of observations
 pZ <- 1 / 2 # probabilty Z = 1
 
 # Monte Carlo settings
-runs <- 10
+runs <- 1000
 
 ############################### MONTE CARLO LOOP ###############################
 
@@ -371,13 +371,21 @@ for (i in 1:sims){
   #   geom_density(aes(x = corrected, col = "corrected")) + 
   #   geom_density(aes(x = oracle, col = "oracle"))
   
+  # plot_data %>% ggplot() + 
+  #   geom_density(aes(x = tsls, col = "TSLS")) + 
+  #   geom_density(aes(x = corrected, col = "corrected")) + 
+  #   geom_density(aes(x = oracle, col = "oracle")) +
+  #   geom_density(aes(x = probit, col = "probit")) + 
+  #   geom_density(aes(x = logit, col = "logit")) +
+  #   geom_density(aes(x = lpm, col = "lpm")) + 
+  #   theme_bw() +
+  #   theme(legend.title = element_blank()) +
+  #   labs(x = "Estimate", y = "")
+  
   plot_data %>% ggplot() + 
     geom_density(aes(x = tsls, col = "TSLS")) + 
     geom_density(aes(x = corrected, col = "corrected")) + 
-    geom_density(aes(x = oracle, col = "oracle")) +
     geom_density(aes(x = probit, col = "probit")) + 
-    geom_density(aes(x = logit, col = "logit")) +
-    geom_density(aes(x = lpm, col = "lpm")) + 
     theme_bw() +
     theme(legend.title = element_blank()) +
     labs(x = "Estimate", y = "")
