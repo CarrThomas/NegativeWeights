@@ -1,2 +1,5 @@
 m_d_903.sas7bdat
 m_d_806.sas7bdat
+*.log
+*.lst
+*.sas
