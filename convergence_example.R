@@ -12,136 +12,36 @@ library(xtable)
 
 ############################# CHECKING CALCULATIONS ############################
 
-rho <- 0.2
+# X takes K + 1 evenly spaced values between -delta and delta, with K an odd number
+# and delta > 0. x_0 = -delta, x_K = delta, and x_k = delta * (2 * k / K - 1)
+# The switcher share is equal to x_k
+
 K <- 4
-a <- -rho
-b <- rho * 2 / K
-a + (0:K) * b
+delta <- 0.2
+x <- delta * (2 * (0:K) / K - 1)
 
-############################# CHECKING CALCULATIONS ############################
+# generate an arbitrary distribution over values of X
+p_x <- runif(K + 1, 0, 1)
+p_x <- p_x / sum(p_x)
 
-# Specify process for the unobservables.
-
-# Generate sigma
-A <- matrix(runif(9, -1, 1), 3, 3)
-sigma <- A %*% t(A)
-# scale so that the first diagonal element is 1 (order is V, U(0), U(1))
-sigma <- sigma / sigma[1, 1]
+# Covariance matrix for the unobservables
+rho_V1 <- runif(1, -0.5, 0)
+rho_V0 <- runif(1, 0, 0.5)
+sigma <- diag(1, 3)
+sigma[3,1:2] <- c(rho_V1, rho_V0)
+sigma[1:2,3] <- c(rho_V1, rho_V0)
+# implicit order is (U1, U0, V)
 
 # Generate unobservables
 n <- 100000
 U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
 U <- data.frame(U)
-names(U) <- c("V", "U_0", "U_1")
+names(U) <- c("U1", "U0", "V")
 
-# pick random propensity scores
-p_0 <- runif(1, 0, 1)
-p_1 <- p_0 + runif(1, 0, 1 - p_0)
-q_0 <- qnorm(p_0)
-q_1 <- qnorm(p_1)
+X <- sample(x, size = n, replace = T, prob = p_x)
 
-# check expectations
-temp <- dplyr::filter(U, V >= q_0 & V <= q_1)
-# E[U_0|p_1 > V > p_0]
-mean(temp$U_0)
-sigma[2, 1] * (dnorm(q_0) - dnorm(q_1)) / (p_1 - p_0)
-# E[U_1|p_1 > V > p_0]
-mean(temp$U_1)
-sigma[3, 1] * (dnorm(q_0) - dnorm(q_1)) / (p_1 - p_0)
+D <- pnorm(X) - U$V >= 0
 
-########################### CHECKING LATE ##########################
-
-# Simple case: no covariates, binary instrument, binary treatment
-# Check that analytically calculated and estimated LATEs match
-
-rm(list = ls())
-gc()
-
-n <- 1000000
-Z <- rbinom(n, 1, 1 / 2)
-mu_1 <- 1 # E[Y(1)]
-mu_0 <- 0.5 # E[Y(0)] 
-# ATE is mu_1 - mu_0
-a_0 <- qnorm(0.45) # pnorm(a_0) is propensity score when Z = 0
-a_1 <- qnorm(0.6) - a_0 # pnorm(a_0 + a_1) is propensity score when Z = 1
-
-# covariance matrix for the unobservables
-A <- matrix(runif(9, -1, 1), 3, 3)
-sigma <- A %*% t(A)
-# scale so that the first diagonal element is one (order is V, U(0), U(1))
-sigma <- sigma / sigma[1, 1]
-
-# generate unobservables
-U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
-U <- data.frame(U)
-names(U) <- c("V", "U_0", "U_1")
-
-# generate observables
-D <- as.numeric(a_0 + a_1 * Z >= U$V)
-Y_1 <- mu_1 + U$U_1
-Y_0 <- mu_0 + U$U_0
-Y <- D * Y_1 + (1 - D) * Y_0
-
-# estimated LATE
-data <- data.frame(Y = Y, D = D, Z = Z)
-D_hat <- lm(D ~ Z, data = data)$fitted.values
-data$D_hat <- D_hat
-lm(Y ~ D_hat, data = data)
-
-# alternative calculation
-Z_tilde <- Z - mean(Z)
-cov(Y, Z_tilde) / cov(D, Z_tilde)
-
-# calculated LATE
-mu_1 - mu_0 + ((sigma[3, 1] - sigma[2, 1]) * (dnorm(a_0) - dnorm(a_0 + a_1))) /
-  (pnorm(a_1 + a_0) - pnorm(a_0))
-
-# a bunch of runs
-runs <- 1000
-results <- matrix(0, runs, 3)
-
-for (i in 1:runs){
-  
-  U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
-  U <- data.frame(U)
-  names(U) <- c("V", "U_0", "U_1")
-  
-  # generate observables
-  D <- as.numeric(a_0 + a_1 * Z >= U$V)
-  Y_1 <- mu_1 + U$U_1
-  Y_0 <- mu_0 + U$U_0
-  Y <- D * Y_1 + (1 - D) * Y_0
-  
-  # estimated LATE
-  data <- data.frame(Y = Y, D = D, Z = Z)
-  D_hat <- lm(D ~ Z, data = data)$fitted.values
-  data$D_hat <- D_hat
-  results[i, 1] <- lm(Y ~ D_hat, data = data)$coefficients[2]
-  
-  # alternative calculation
-  Z_tilde <- Z - mean(Z)
-  results[i, 2] <- cov(Y, Z_tilde) / cov(D, Z_tilde)
-  
-  # calculated LATE
-  results[i, 3] <- mu_1 - mu_0 + 
-    (sigma[3, 1] - sigma[2, 1]) * (dnorm(a_0) - dnorm(a_0 + a_1)) /
-    (pnorm(a_0 + a_1) - pnorm(a_0))
-  
-}
-
-results <- data.frame(results)
-names(results) <- c("TSLS", "alt", "actual")
-
-results %>% ggplot() + 
-  geom_point(aes(x = TSLS, y = alt, col = "comparison")) + 
-  theme_bw() + 
-  theme(legend.position = "null")
-
-results %>% ggplot() +
-  geom_density(aes(x = TSLS, col = "TSLS")) + 
-  geom_vline(xintercept = results$actual[1], lty = "dashed") + 
-  theme_bw() + 
-  theme(legend.position = "null")
 
 ################################ SIMPLE EXAMPLE ################################
 
