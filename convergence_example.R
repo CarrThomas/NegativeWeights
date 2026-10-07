@@ -10,198 +10,105 @@ library(mvtnorm)
 library(clusterGeneration)
 library(xtable)
 
-############################# CHECKING CALCULATIONS ############################
+set.seed(1234)
 
-# Let X take K + 1 values, where K is an even number.
-# Choose values of p(X,1) - p(X,0) that are evenly spaced between -delta and
-# delta. Call this vector w. Let its limits be -delta and delta. We have
-# w_0 = -delta
-# w_K = delta
-# w_k = delta * (2 * k / K - 1)
-
-K <- 2
-delta <- 0.2
-w <- delta * (2 * (0:K) / K - 1)
-
-# The selection model is set as
-# 1{a + d(X) > V}
-# We need to back out the d(X) that achieves a given p(X,1) - p(X,0). As  V is
-# normally distributed
-# p(X,0) = Phi(a) 
-# p(X,1) = Phi(a + d(X))
-# Hence,
-# p(X,1) - p(X,0) = Phi(a + d(X)) - Phi(a)
-# solving for d(X)
-# d(X) = Phi^{-1}(Phi(a) + p(X,1) - p(X,0)) - a
-# To simplify, we set a = 0 (so that Phi(a) = 0.5)
-a <- 0
-d <- qnorm(pnorm(a) + w) - a 
-
-# Set the ATE
-B <- 1 
-
-#### Specify distributions ####
-
-# Randomly generate a covariance matrix for the unobservables
-A <- matrix(runif(9, -1, 1), 3, 3)
-sigma <- A %*% t(A)
-# Scale to be a correlation matrix
-for (k in 1:3){
-  
-  sd_k <- sqrt(sigma[k, k])
-  sigma[, k] <- sigma[, k] / sd_k
-  sigma[k, ] <- sigma[k, ] / sd_k
-  
-}
-rho_V1 <- sigma[3, 1]
-rho_V0 <- sigma[3, 2]
-
-# Distribution for X
-p_x <- runif(K + 1, 0, 1)
-p_x <- p_x / sum(p_x)
-
-# Probability that Z = 1
-pZ <- 1 / 2
-
-#### Generate Variables ####
-
-n <- 1000000
-
-# Unobservables
-U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
-U <- data.frame(U)
-names(U) <- c("U1", "U0", "V")
-
-# X and Z
-X <- sample(0:K, size = n, replace = T, prob = p_x)
-Z <- rbinom(n, 1, pZ)
-
-# Construct D and Y
-D <- (a + d[X + 1] * Z >= U$V)
-Y <- (1 - D) * U$U0 + D *(B + U$U1)
-
-data <- data.frame(Y = Y, X = X, D = D, Z = Z)
-
-#### Check Propensity Scores ####
-
-w_hat <- rep(0, K + 1)
-for (k in 0:K){
-  
-  temp <- dplyr::filter(data, X == k)
-  w_hat[k + 1] <- mean(temp$D[temp$Z == 1]) - mean(temp$D[temp$Z == 0])
-  
-}
-w_hat
-w
-
-#### Construct Z_tilde ####
-
-# Construct E[Z|X =  x] as the sample average of Z with X = x
-bar_Z <- rep(0, K + 1)
-for (k in 0:K){
-  
-  bar_Z[k + 1] <- mean(data$Z[data$X == k])
-  
-}
-
-Z_tilde <- rep(0, n)
-for (i in 1:n){
-  
-  Z_tilde[i] <- Z[i] - bar_Z[X[i] + 1]
-  
-}
-
-s_star <- rep(0, n)
-for (i in 1:n){
-  s_star[i] <- 2 * (w[X[i] + 1] >= 0) - 1
-}
-
-#### Check Denominator ####
-
-mean(D * s_star * Z_tilde)
-pZ * (1 - pZ) * sum(p_x * abs(w))
-pZ * (1 - pZ) * sum(p_x * abs(pnorm(a + d) - pnorm(a)))
-pZ * (1 - pZ) * sum(p_x * ((w >= 0) - (w < 0)) * (pnorm(a + d) - pnorm(a)))
-
-#### Check Numerator ####
-
-mean(Y * s_star * Z_tilde) 
-B * pZ * (1 - pZ) * sum(p_x * ((w < 0) * (pnorm(a) - pnorm(a + d)) + 
-                                 (w >= 0) * (pnorm(a + d) - pnorm(a)))) +
-  pZ * (1 - pZ) * (rho_V1 - rho_V0) *
-  sum(p_x * ((w >= 0) * (dnorm(a) - dnorm(a + d)) + 
-               (w < 0) * (dnorm(a + d) - dnorm(a))))
-B * pZ * (1 - pZ) * 
-  sum(p_x * ((w >= 0) - (w < 0)) * (pnorm(a + d) - pnorm(a))) + 
-  pZ * (1 - pZ) * (rho_V1 - rho_V0) *
-  sum(p_x * ((w >= 0) - (w < 0)) * (dnorm(a) - dnorm(a + d)))
-
-
-#### Check Numerator for Individual X Values ####
-
-data$Z_tilde <- Z_tilde
-data$s_star <- s_star
-
-data_num <- rep(0, K + 1)
-true_num <- rep(0, K + 1)
-
-for (k in 0:K){
-  
-  temp <- dplyr::filter(data, X == k)
-  data_num[k + 1] <- mean(temp$Y * temp$s_star * temp$Z_tilde)
-  true_num[k + 1] <- pZ * (1 - pZ) * (
-    B * ((w[k + 1] < 0) * (pnorm(a) - pnorm(a + d[k + 1])) + 
-           (w[k + 1] >= 0) * (pnorm(a + d[k + 1]) - dnorm(a))) +
-    (rho_V1 - rho_V0) * 
-    ((w[k + 1] >= 0) * (dnorm(a) - dnorm(a + d[k + 1])) + 
-       (w[k + 1] < 0) * (dnorm(a + d[k + 1]) - dnorm(a))))
-  
-}
-
-data_num
-true_num
-
-
-#### Check the whole thing ####
-
-mean(Y * s_star * Z_tilde) / mean(D * s_star * Z_tilde)
-B + (rho_V1 - rho_V0) *
-  sum(p_x * ((w >= 0) * (dnorm(a) - dnorm(a + d)) + 
-               (w < 0) * (dnorm(a + d) - dnorm(a)))) / sum(p_x * abs(w))
-B + (rho_V1 - rho_V0) *
-  sum(p_x * (((w >= 0) - (w < 0)) * (dnorm(a) - dnorm(a + d)))) / 
-  sum(p_x * abs(w))
-
-data_tau <- mean(Y * s_star * Z_tilde) / mean(D * s_star * Z_tilde)
-true_tau <- B + (rho_V1 - rho_V0) *
-  sum(p_x * ((w >= 0) * (dnorm(a) - dnorm(a + d)) + 
-               (w < 0) * (dnorm(a + d) - dnorm(a)))) / sum(p_x * abs(w))
-
-data_tau
-true_tau
-
-############################ SIMPLE EXAMPLE TEST RUN ###########################
-
-# X takes three values (-1, 0, 1) 
-# Defiers at X = -1, compliers at X = 1, no switchers at X = 0
+# X takes K + 1 values 0:K with K even
+# Defiers for all X < K / 2, compliers for all X > K / 2, no switchers for
+# X = K / 2
 # Compare oracle and feasible estimators in two cases
-# 1) P(X = 0) = 0, P(X = - 1) = P(X = 1) = 1 / 2
-# 2) P(X = x) = 1 / 3 for x = -1,0,1
- 
-rm(list = ls())
-gc()
+# 1) P(X = x) = 1 / K for all x != K / 2, P(X = K / 2) = 0
+# 2) P(X = x) = 1 / (K + 1) for all x
 
-# First stage parameters
+################################### FUNCTIONS ##################################
+
+gen_data <- function(n, sigma, p_x, pZ, K, a, d, B){
+  
+  # Generates (D,X,Y,Z)
+  # inputs
+  # n: number of observations
+  # sigma: covariance matrix for the unobservables
+  # p_x: distribution for x
+  # pZ: probability Z = 1
+  # K: x values range from 0 to K
+  # a,d: first stage D = 1(a + d * Z >= V)
+  # B: ATE
+  
+  # Unobservables
+  U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
+  U <- data.frame(U)
+  names(U) <- c("U1", "U0", "V")
+  
+  # X and Z
+  X <- sample(0:K, size = n, replace = T, prob = p_x)
+  Z <- rbinom(n, 1, pZ)
+  
+  # Construct D and Y
+  D <- (a + d[X + 1] * Z >= U$V)
+  Y <- (1 - D) * U$U0 + D *(B + U$U1)
+  
+  return(data.frame(D = D, X = X, Y = Y, Z = Z))
+  
+}
+
+gen_vars <- function(data, K, true_s){
+  
+  # adds in the demeaned Z, true sign function, and estimated sign function
+  # inputs:
+  # data data frame containing D, X, Y, Z
+  # K x values range from 0 to K
+  # true_s value of the sign function for each X
+  
+  X_vals <- sort(unique(data$X))
+  
+  # Z_tilde = Z - E[Z|X]
+  bar_Z <- rep(0, K + 1)
+  for (k in X_vals){
+    bar_Z[k + 1] <- mean(data$Z[data$X == k])
+  }
+  data$Z_tilde <- data$Z - bar_Z[data$X + 1]
+  
+  # Oracle sign function
+  data$s_star <- true_s[data$X + 1] 
+  
+  # Estimated sign function
+  est_s <- rep(0, K + 1)
+  for (k in X_vals){
+    
+    temp <- dplyr::filter(data, X == k)
+    n_1 <- sum(temp$Z)
+    n_0 <- sum(1 - temp$Z)
+    
+    if (n_1 > 0 & n_0 > 0){
+      est_s[k + 1] <- 
+        2 * (sum(temp$Z * temp$D) / n_1 > sum((1 - temp$Z) * temp$D) / n_0) - 1 
+    }
+  }
+  data$s_hat <- est_s[data$X + 1]
+  
+  return(data)
+  
+}
+
+################################## PARAMETERS ##################################
+
+# Number of X values
 K <- 2
+
+# Switcher shares at each value of X are evenly spaced between -delta and delta
 delta <- 0.2
 w <- delta * (2 * (0:K) / K - 1)
+
+# First stage 1(a + dZ >= V)
 a <- 0
 d <- qnorm(pnorm(a) + w) - a 
 
-# Set the ATE
-B <- 1 
+# ATE
+B <- 0 
 
-#### Specify distributions ####
+# True value of the sign function for each value of X
+true_s <- 2 * (w >= 0) - 1
+
+################################# DISTRIBUTIONS ################################
 
 # Randomly generate a covariance matrix for the unobservables
 A <- matrix(runif(9, -1, 1), 3, 3)
@@ -225,138 +132,42 @@ p_x[[2]] <- rep(1 / 3, 3)
 # Probability that Z = 1
 pZ <- 1 / 2
 
-#### Generate Variables ####
+################################# GENERATE DATA ################################
 
-l <- 2 # which distribution over X do you want to use
-n <- 1000000
+n <- c(100, 200, 500, 1000) # sample sizes
+runs <- 10 # number of draws for each sample size
 
-# Unobservables
-U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
-U <- data.frame(U)
-names(U) <- c("U1", "U0", "V")
+tau_oracle <- matrix(0, length(n), runs)
+tau_feasible <- matrix(0, length(n), runs)
 
-# X and Z
-X <- sample(0:K, size = n, replace = T, prob = p_x[[l]])
-Z <- rbinom(n, 1, pZ)
-
-# Construct D and Y
-D <- (a + d[X + 1] * Z >= U$V)
-Y <- (1 - D) * U$U0 + D *(B + U$U1)
-
-data <- data.frame(Y = Y, X = X, D = D, Z = Z)
-
-#### Check Propensity Scores ####
-
-w_hat <- rep(0, K + 1)
-for (k in 0:K){
-  
-  temp <- dplyr::filter(data, X == k)
-  w_hat[k + 1] <- mean(temp$D[temp$Z == 1]) - mean(temp$D[temp$Z == 0])
-  
-}
-w_hat
-w
-
-#### Construct Z_tilde ####
-
-# Construct E[Z|X =  x] as the sample average of Z with X = x
-bar_Z <- rep(0, K + 1)
-for (k in 0:K){
-  
-  bar_Z[k + 1] <- mean(data$Z[data$X == k])
-  
+for (i in 1:length(n)){
+  for (j in 1:runs){
+    
+    data <- gen_data(n = n[i],
+                     sigma = sigma,
+                     p_x = p_x[[1]],
+                     pZ = pZ,
+                     K = K,
+                     a = a,
+                     d = d,
+                     B = B)
+    data <- gen_vars(data = data,
+                     K = K,
+                     true_s = true_s)
+    
+    tau_oracle[i, j] <- sum(data$Y * data$s_star * data$Z_tilde) / 
+      sum(data$D * data$s_star * data$Z_tilde)
+    tau_feasible[i, j] <- sum(data$Y * data$s_hat * data$Z_tilde) / 
+      sum(data$D * data$s_hat * data$Z_tilde)
+    
+    
+  }
 }
 
-Z_tilde <- rep(0, n)
-for (i in 1:n){
-  
-  Z_tilde[i] <- Z[i] - bar_Z[X[i] + 1]
-  
-}
-
-s_star <- rep(0, n)
-for (i in 1:n){
-  s_star[i] <- 2 * (w[X[i] + 1] >= 0) - 1
-}
-
-#### Check Denominator ####
-
-mean(D * s_star * Z_tilde)
-pZ * (1 - pZ) * sum(p_x[[l]] * abs(w))
-pZ * (1 - pZ) * sum(p_x[[l]] * abs(pnorm(a + d) - pnorm(a)))
-pZ * (1 - pZ) * sum(p_x[[l]] * ((w >= 0) - (w < 0)) * (pnorm(a + d) - pnorm(a)))
-
-#### Check Numerator ####
-
-mean(Y * s_star * Z_tilde) 
-B * pZ * (1 - pZ) * sum(p_x[[l]] * ((w < 0) * (pnorm(a) - pnorm(a + d)) + 
-                                 (w >= 0) * (pnorm(a + d) - pnorm(a)))) +
-  pZ * (1 - pZ) * (rho_V1 - rho_V0) *
-  sum(p_x[[l]] * ((w >= 0) * (dnorm(a) - dnorm(a + d)) + 
-               (w < 0) * (dnorm(a + d) - dnorm(a))))
-B * pZ * (1 - pZ) * 
-  sum(p_x[[l]] * ((w >= 0) - (w < 0)) * (pnorm(a + d) - pnorm(a))) + 
-  pZ * (1 - pZ) * (rho_V1 - rho_V0) *
-  sum(p_x[[l]] * ((w >= 0) - (w < 0)) * (dnorm(a) - dnorm(a + d)))
-
-
-#### Check Numerator for Individual X Values ####
-
-data$Z_tilde <- Z_tilde
-data$s_star <- s_star
-
-data_num <- rep(0, K + 1)
-true_num <- rep(0, K + 1)
-
-for (k in 0:K){
-  
-  temp <- dplyr::filter(data, X == k)
-  data_num[k + 1] <- mean(temp$Y * temp$s_star * temp$Z_tilde)
-  true_num[k + 1] <- pZ * (1 - pZ) * (
-    B * ((w[k + 1] < 0) * (pnorm(a) - pnorm(a + d[k + 1])) + 
-           (w[k + 1] >= 0) * (pnorm(a + d[k + 1]) - dnorm(a))) +
-      (rho_V1 - rho_V0) * 
-      ((w[k + 1] >= 0) * (dnorm(a) - dnorm(a + d[k + 1])) + 
-         (w[k + 1] < 0) * (dnorm(a + d[k + 1]) - dnorm(a))))
-  
-}
-
-data_num
-true_num
-
-
-#### Check the whole thing ####
-
-mean(Y * s_star * Z_tilde) / mean(D * s_star * Z_tilde)
-B + (rho_V1 - rho_V0) *
-  sum(p_x[[l]] * ((w >= 0) * (dnorm(a) - dnorm(a + d)) + 
-               (w < 0) * (dnorm(a + d) - dnorm(a)))) / sum(p_x[[l]] * abs(w))
-B + (rho_V1 - rho_V0) *
-  sum(p_x[[l]] * (((w >= 0) - (w < 0)) * (dnorm(a) - dnorm(a + d)))) / 
-  sum(p_x[[l]] * abs(w))
-
-data_tau <- mean(Y * s_star * Z_tilde) / mean(D * s_star * Z_tilde)
-true_tau <- B + (rho_V1 - rho_V0) *
-  sum(p_x[[l]] * ((w >= 0) * (dnorm(a) - dnorm(a + d)) + 
-               (w < 0) * (dnorm(a + d) - dnorm(a)))) / sum(p_x[[l]] * abs(w))
-
-data_tau
-true_tau
+# summary statistics
 
 
 
-
-n <- 1000000
-gamma <- 0.1
-Z <- rbinom(n, 1, 1 / 2)
-X <- rbinom(n, 1, 1 / 2 - gamma)
-
-X_ord <- order(X)
-Z <- Z[X_ord]
-X <- X[X_ord]
-
-n_1 <- sum(X)
-n_0 <- n - n_1
 
 # set first stage parameters
 a_0 <- c(qnorm(0.2), qnorm(0.6)) # pnorm(a_0) is the lower propensity score
@@ -1216,47 +1027,47 @@ data %>% ggplot() +
 # # Add in the outcome
 # 
 
-
-######################## TSLS WITH MULTIPLE INSTRUMENTS ########################
-
-#### CHECKING MEAN INDEPENDENCE ####
-
-# Maintain that Z is independent of all unobservables (conditional on X). Say X 
-# is endogenous. What about XZ? 
-
-rm(list=ls())
-gc()
-
-# X independent of Z
-n <- 1000000
-X <- rnorm(n, mean = 1)
-Z <- rbinom(n, 1, 1/3)
-XZ <- X * Z
-
-data <- data.frame(X = X, Z = Z, XZ = XZ)
-
-data$Z_tilde <- lm(Z ~ X, data = data)$fitted.values
-data$XZ_tilde <- lm(XZ ~ X, data = data)$fitted.values
-
-temp <- data$X * data$Z_tilde
-cor(temp, data$XZ_tilde)
-temp - data$XZ_tilde
-mean(abs(temp - data$XZ_tilde))
-
-# E[Z|X] is a linear function of X
-X <- runif(n, 0, 1)
-a_0 <- 1 / 3
-a_1 <- 2 / 3
-Z <- rbinom(n, 1, a_0 + a_1 * X)
-XZ <- X * Z
-
-data <- data.frame(X = X, X_square = X ^ 2, Z = Z, XZ = XZ)
-
-data$Z_tilde <- lm(Z ~ X, data = data)$fitted.values
-data$XZ_tilde <- lm(XZ ~ X + X_square, data = data)$fitted.values
-
-
-temp <- data$X * data$Z_tilde
-cor(temp, data$XZ_tilde)
-temp - data$XZ_tilde
-mean(abs(temp - data$XZ_tilde))
+# 
+# ######################## TSLS WITH MULTIPLE INSTRUMENTS ########################
+# 
+# #### CHECKING MEAN INDEPENDENCE ####
+# 
+# # Maintain that Z is independent of all unobservables (conditional on X). Say X 
+# # is endogenous. What about XZ? 
+# 
+# rm(list=ls())
+# gc()
+# 
+# # X independent of Z
+# n <- 1000000
+# X <- rnorm(n, mean = 1)
+# Z <- rbinom(n, 1, 1/3)
+# XZ <- X * Z
+# 
+# data <- data.frame(X = X, Z = Z, XZ = XZ)
+# 
+# data$Z_tilde <- lm(Z ~ X, data = data)$fitted.values
+# data$XZ_tilde <- lm(XZ ~ X, data = data)$fitted.values
+# 
+# temp <- data$X * data$Z_tilde
+# cor(temp, data$XZ_tilde)
+# temp - data$XZ_tilde
+# mean(abs(temp - data$XZ_tilde))
+# 
+# # E[Z|X] is a linear function of X
+# X <- runif(n, 0, 1)
+# a_0 <- 1 / 3
+# a_1 <- 2 / 3
+# Z <- rbinom(n, 1, a_0 + a_1 * X)
+# XZ <- X * Z
+# 
+# data <- data.frame(X = X, X_square = X ^ 2, Z = Z, XZ = XZ)
+# 
+# data$Z_tilde <- lm(Z ~ X, data = data)$fitted.values
+# data$XZ_tilde <- lm(XZ ~ X + X_square, data = data)$fitted.values
+# 
+# 
+# temp <- data$X * data$Z_tilde
+# cor(temp, data$XZ_tilde)
+# temp - data$XZ_tilde
+# mean(abs(temp - data$XZ_tilde))
