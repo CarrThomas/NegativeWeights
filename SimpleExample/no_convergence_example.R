@@ -1,0 +1,340 @@
+################################# FRONT MATTER #################################
+
+rm(list=ls())
+gc()
+
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(mvtnorm)
+library(clusterGeneration)
+library(xtable)
+
+set.seed(1234)
+
+# Key difference between the convergence and no convergence examples: HERE WE
+# INCLUDE A MASS POINT WITH NO SWITCHERS.
+
+# X takes K + 1 values 0:K with K even
+# Defiers for all X < K / 2, compliers for all X > K / 2, no switchers for
+# X = K / 2.
+# Assume a fixed covariate type design: n observations for each covariate value
+# including K / 2
+
+################################### FUNCTIONS ##################################
+
+gen_data <- function(n, sigma, pZ, K, a, d, B){
+  
+  # Generates (D,X,Y,Z)
+  # inputs
+  # n: number of observations for each X value
+  # sigma: covariance matrix for the unobservables
+  # pZ: probability Z = 1
+  # K: x values range from 0 to K
+  # a,d: first stage D = 1(a + d * Z >= V)
+  # B: ATE
+  
+  # Unobservables
+  U <- rmvnorm(n * (K + 1), mean = rep(0, 3), sigma = sigma)
+  U <- data.frame(U)
+  names(U) <- c("U1", "U0", "V")
+  
+  # X and Z
+  X <- rep(c(0:K), each = n)
+  Z <- rbinom(n * (K + 1), 1, pZ)
+  
+  # Construct D and Y
+  D <- (a + d[X + 1] * Z >= U$V)
+  Y <- (1 - D) * U$U0 + D *(B + U$U1)
+  
+  return(data.frame(D = D, X = X, Y = Y, Z = Z))
+  
+}
+
+# gen_data <- function(n, sigma, p_x, pZ, K, a, d, B){
+# 
+#   # Generates (D,X,Y,Z)
+#   # inputs
+#   # n: number of observations
+#   # sigma: covariance matrix for the unobservables
+#   # p_x: distribution for x
+#   # pZ: probability Z = 1
+#   # K: x values range from 0 to K
+#   # a,d: first stage D = 1(a + d * Z >= V)
+#   # B: ATE
+# 
+#   # Unobservables
+#   U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
+#   U <- data.frame(U)
+#   names(U) <- c("U1", "U0", "V")
+# 
+#   # X and Z
+#   X <- sample(0:K, size = n, replace = T, prob = p_x)
+#   Z <- rbinom(n, 1, pZ)
+# 
+#   # Construct D and Y
+#   D <- (a + d[X + 1] * Z >= U$V)
+#   Y <- (1 - D) * U$U0 + D *(B + U$U1)
+# 
+#   return(data.frame(D = D, X = X, Y = Y, Z = Z))
+# 
+# }
+
+gen_vars <- function(data, K, true_s){
+  
+  # adds in the demeaned Z, true sign function, and estimated sign function
+  # inputs:
+  # data: D, X, Y, Z, ordered by X, n draws for each X
+  # K x values range from 0 to K
+  # true_s value of the sign function for each X
+  
+  X_vals <- sort(unique(data$X))
+  
+  # Z_tilde = Z - E[Z|X]
+  bar_Z <- rep(0, K + 1)
+  for (k in X_vals){
+    bar_Z[k + 1] <- mean(data$Z[data$X == k])
+  }
+  data$Z_tilde <- data$Z - bar_Z[data$X + 1]
+  
+  # Oracle sign function
+  data$s_star <- true_s[data$X + 1] 
+  
+  # Estimated sign function
+  est_s <- rep(0, K + 1)
+  for (k in X_vals){
+    
+    temp <- dplyr::filter(data, X == k)
+    n_1 <- sum(temp$Z)
+    n_0 <- sum(1 - temp$Z)
+    
+    if (n_1 > 0 & n_0 > 0){
+      est_s[k + 1] <- 
+        2 * (sum(temp$Z * temp$D) / n_1 >= sum((1 - temp$Z) * temp$D) / n_0) - 1 
+    }
+  }
+  data$s_hat <- est_s[data$X + 1]
+  
+  return(data)
+  
+}
+
+# gen_vars <- function(data, K, true_s){
+#   
+#   # adds in the demeaned Z, true sign function, and estimated sign function
+#   # inputs:
+#   # data data frame containing D, X, Y, Z
+#   # K x values range from 0 to K
+#   # true_s value of the sign function for each X
+#   
+#   X_vals <- sort(unique(data$X))
+#   
+#   # Z_tilde = Z - E[Z|X]
+#   bar_Z <- rep(0, K + 1)
+#   for (k in X_vals){
+#     bar_Z[k + 1] <- mean(data$Z[data$X == k])
+#   }
+#   data$Z_tilde <- data$Z - bar_Z[data$X + 1]
+#   
+#   # Oracle sign function
+#   data$s_star <- true_s[data$X + 1] 
+#   
+#   # Estimated sign function
+#   est_s <- rep(0, K + 1)
+#   for (k in X_vals){
+#     
+#     temp <- dplyr::filter(data, X == k)
+#     n_1 <- sum(temp$Z)
+#     n_0 <- sum(1 - temp$Z)
+#     
+#     if (n_1 > 0 & n_0 > 0){
+#       est_s[k + 1] <- 
+#         2 * (sum(temp$Z * temp$D) / n_1 > sum((1 - temp$Z) * temp$D) / n_0) - 1 
+#     }
+#   }
+#   data$s_hat <- est_s[data$X + 1]
+#   
+#   return(data)
+#   
+# }
+
+# Given a vector containing estimates of tau, this returns summary statistics
+get_stats <- function(results, B){
+  
+  # results is a vector of estimates of tau.
+  # B is the ATE, which equals the asymptotic estimand. 
+  
+  # statistics returned are: mean, sd, MSE, median, 0.25 and 0.75 quantiles
+  results <- results[!is.infinite(results)]
+  stats <- rep(0, 6)
+  stats[1] <- mean(results, na.rm = TRUE)
+  stats[2] <- sd(results, na.rm = TRUE)
+  stats[3] <- (stats[1] - B) ^ 2 + stats[2] ^ 2
+  stats[4:6] <- quantile(results, c(0.5, 0.25, 0.75), na.rm = TRUE)
+  return(stats)
+  
+}
+
+make_plot <- function(tau_oracle, tau_feasible, x_lims, B){
+  
+  oracle_dens <- density(tau_oracle)
+  oracle_data <- data.frame(x = oracle_dens$x, y = oracle_dens$y)
+  
+  feasible_dens <- density(tau_feasible)
+  feasible_data <- data.frame(x = feasible_dens$x, y = feasible_dens$y)
+  
+  ggplot() +
+    geom_line(aes(x = x, y = y, col = "Oracle"), 
+              data = oracle_data, 
+              linetype = "dashed") +
+    geom_line(aes(x = x, y = y, col = "Feasible"), 
+              data = feasible_data) +
+    geom_vline(aes(xintercept = B, col = "Asymptotic Limit"), 
+               linetype = "dotted") + 
+    theme_bw() +
+    theme(legend.title = element_blank()) +
+    scale_color_manual(values = c("Oracle" = "#F8766D",
+                                  "Feasible" = "#619CFF",
+                                  "Asymptotic Limit" = "black")) + 
+    xlim(x_lims[1], x_lims[2]) +  
+    labs(x = "", y = "") + 
+    theme(legend.position = c(0.2, 0.8))
+  
+}
+
+################################## PARAMETERS ##################################
+
+# Number of X values is K + 1 
+K <- 2
+
+# Switcher shares at each value of X are evenly spaced between -delta and delta
+delta <- 0.2
+w <- delta * (2 * (0:K) / K - 1)
+
+# First stage 1(a + dZ >= V)
+a <- 0
+d <- qnorm(pnorm(a) + w) - a 
+
+# ATE (also equals the asymptotic limit of the estimand)
+B <- 0 
+
+# True value of the sign function for each value of X
+true_s <- 2 * (w >= 0) - 1
+
+################################# DISTRIBUTIONS ################################
+
+# Randomly generate a covariance matrix for the unobservables
+A <- matrix(runif(9, -1, 1), 3, 3)
+sigma <- A %*% t(A)
+# Scale to be a correlation matrix
+for (k in 1:3){
+  
+  sd_k <- sqrt(sigma[k, k])
+  sigma[, k] <- sigma[, k] / sd_k
+  sigma[k, ] <- sigma[k, ] / sd_k
+  
+}
+rho_V1 <- sigma[3, 1]
+rho_V0 <- sigma[3, 2]
+
+# # Distribution for X
+# p_x <- vector(mode = "list", length = 2)
+# p_x[[1]] <- c(1 / 2, 0, 1 / 2)
+# p_x[[2]] <- rep(1 / 3, 3)
+
+# Probability that Z = 1
+pZ <- 1 / 2
+
+################################# GENERATE DATA ################################
+
+# n <- c(50, 100, 200, 400) # number of observations for each X
+n <- c(1000, 4000)
+runs <- 1000 # number of draws for each sample size
+
+tau_oracle <- matrix(0, length(n), runs)
+tau_feasible <- matrix(0, length(n), runs)
+s_check <- matrix(0, length(n), runs)
+
+for (i in 1:length(n)){
+  for (j in 1:runs){
+    
+    data <- gen_data(n = n[i],
+                     sigma = sigma,
+                     pZ = pZ,
+                     K = K,
+                     a = a,
+                     d = d,
+                     B = B)
+    data <- gen_vars(data = data,
+                     K = K,
+                     true_s = true_s)
+    
+    s_check[i, j] <- cor(data$s_star, data$s_hat)
+    
+    tau_oracle[i, j] <- sum(data$Y * data$s_star * data$Z_tilde) / 
+      sum(data$D * data$s_star * data$Z_tilde)
+    tau_feasible[i, j] <- sum(data$Y * data$s_hat * data$Z_tilde) / 
+      sum(data$D * data$s_hat * data$Z_tilde)
+    
+    
+  }
+}
+
+############################## SUMMARY STATISTICS ##############################
+
+# Returns the mean, variance, MSE, median, 0.25 and 0.75 quartiles of the 
+# sampling distribution of the oracle and feasible estimators. 
+
+feasible_sum_stats <- matrix(0, length(n), 6)
+oracle_sum_stats <- matrix(0, length(n), 6)
+
+for (i in 1:length(n)){
+  
+  feasible_sum_stats[i, ] <- get_stats(results = tau_feasible[i, ], B = B)
+  oracle_sum_stats[i, ] <- get_stats(results = tau_oracle[i, ], B = B)
+  
+}
+
+rownames(feasible_sum_stats) <- n
+rownames(oracle_sum_stats) <- n
+
+xtable(feasible_sum_stats, digits = 3)
+xtable(oracle_sum_stats, digits = 3)
+
+######################## PLOT OF SAMPLING DISTRIBUTIONS ########################
+
+# Prepare data for plotting
+
+# convert to sqrt(n) * (tau - tau^*)
+tau_oracle <- tau_oracle - B
+tau_feasible <- tau_feasible - B
+for (i in 1:nrow(tau_oracle)){
+  
+  tau_oracle[i, ] <- sqrt((K + 1) * n[i]) * tau_oracle[i, ]
+  tau_feasible[i, ] <- sqrt((K + 1) * n[i]) * tau_feasible[i, ]
+  
+}
+
+x_lims <- rep(0, 2)
+x_lims[1] <- quantile(c(tau_feasible, tau_oracle), 0.001, na.rm = TRUE)
+x_lims[2] <- quantile(c(tau_feasible, tau_oracle), 0.999, na.rm = TRUE)
+
+make_plot(tau_oracle = tau_oracle[1, ],
+          tau_feasible = tau_feasible[1, ],
+          x_lims = x_lims,
+          B = B)
+make_plot(tau_oracle = tau_oracle[2, ],
+          tau_feasible = tau_feasible[2, ],
+          x_lims = x_lims,
+          B = B)
+make_plot(tau_oracle = tau_oracle[3, ],
+          tau_feasible = tau_feasible[3, ],
+          x_lims = x_lims,
+          B = B)
+make_plot(tau_oracle = tau_oracle[4, ],
+          tau_feasible = tau_feasible[4, ],
+          x_lims = x_lims,
+          B = B)
+
+
+

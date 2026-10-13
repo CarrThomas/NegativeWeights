@@ -20,6 +20,7 @@ gc()
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(xtable)
 
 ################################### FUNCTIONS ##################################
 
@@ -263,4 +264,129 @@ sim_plot_data %>% ggplot() +
   labs(color = expression(delta),
        shape = expression(delta))
 
+########################### COMPLIERS FOR SPECIFIC N ###########################
 
+# The case where d > 0, so that switchers are compliers. 
+delta <- c(0, 0.05, 0.1, 0.15, 0.2)
+a <- 0 
+d <- qnorm(pnorm(a) + delta) - a
+p_Z1 <- 1 / 2 # Pr(Z = 1|X)
+
+n <- c(50, 100, 200, 400) # possible sample sizes
+P_correct <- matrix(0, length(n), length(d))
+
+for (l in 1:length(d)){
+  
+  for (i in 1:length(n)){
+    
+    # loop over sample sizes
+    
+    # enumerate possible combinations of Z = 1 and Z = 0 
+    n_Z1 <- seq(0, n[i]) # observations with Z = 1
+    n_Z0 <- n[i] - n_Z1 # observations with Z = 0
+    P_temp <- rep(0, n[i] - 1)
+    
+    # convention: if we have 0 observations with Z = 0 or Z = 1, then the cell is
+    # zeroed out. 
+    
+    for (j in 2:n[i]){
+      
+      # i fixes n_Z0 and n_Z1
+      # loop over the number of D = 1 draws for Z = 0
+      P_temp[j - 1] <- sum(sapply(0:n_Z0[j],
+                                  get_prob_correct,
+                                  n_Z0 = n_Z0[j],
+                                  n_Z1 = n_Z1[j],
+                                  a = a,
+                                  d = d[l])) * dbinom(n_Z1[j], n[i], p_Z1)
+      
+    }
+    
+    P_correct[i, l] <- sum(P_temp)
+    
+  }
+  
+}
+
+colnames(P_correct) <- delta
+rownames(P_correct) <- n
+P_correct
+P_correct_compliers <- P_correct
+
+############################ DEFIERS FOR SPECIFIC N ############################
+
+# The case where d < 0, so that switchers are defiers. 
+delta <- - c(0, 0.05, 0.1, 0.15, 0.2)
+a <- 0 
+d <- qnorm(pnorm(a) + delta) - a
+p_Z1 <- 1 / 2 # Pr(Z = 1|X)
+
+n <- c(50, 100, 200, 400) # possible sample sizes
+P_correct <- matrix(0, length(n), length(d))
+
+for (l in 1:length(d)){
+  
+  for (i in 1:length(n)){
+    
+    # loop over sample sizes
+    
+    # enumerate possible combinations of Z = 1 and Z = 0 
+    n_Z1 <- seq(0, n[i]) # observations with Z = 1
+    n_Z0 <- n[i] - n_Z1 # observations with Z = 0
+    P_temp <- rep(0, n[i] - 1)
+    
+    # convention: if we have 0 observations with Z = 0 or Z = 1, then the cell is
+    # zeroed out. 
+    
+    for (j in 2:n[i]){
+      
+      # i fixes n_Z0 and n_Z1
+      # loop over the number of D = 1 draws for Z = 0
+      P_temp[j - 1] <- sum(sapply(0:n_Z0[j],
+                                  get_prob_correct,
+                                  n_Z0 = n_Z0[j],
+                                  n_Z1 = n_Z1[j],
+                                  a = a,
+                                  d = d[l])) * dbinom(n_Z1[j], n[i], p_Z1)
+      
+    }
+    
+    P_correct[i, l] <- 1 - sum(P_temp)
+    
+  }
+  
+}
+
+colnames(P_correct) <- delta
+rownames(P_correct) <- n
+P_correct
+
+P_correct_defiers <- P_correct
+
+############################## MAKE A MASTER TABLE #############################
+
+# combine both sets of results
+K <- length(delta)
+P_correct <- cbind(P_correct_defiers, P_correct_compliers)
+P_correct <- P_correct[, c(2:K, (K + 2):(2 * K))]
+P_correct <- P_correct[, c((K - 1):1,K:(2 * (K - 1)))]
+
+# add a column for the probability that all are correct
+apply(P_correct, 1, prod)
+P_correct <- cbind(P_correct, apply(P_correct, 1, prod))
+xtable(P_correct, digits = 3)
+
+# replace with averages
+temp <- matrix(0, length(n), K - 1)
+for (i in 1:length(n)){
+  for (j in 1:(K - 1)){
+    temp[i, j] <- (P_correct[i, j] + P_correct[i, 2 * (K - 1) + 1 - j]) / 2
+  }
+}
+temp <- temp[, (K - 1):1]
+rownames(temp) <- n
+colnames(temp) <- -1 * delta[2:K]
+temp <- cbind(temp, P_correct[, 2 * (K - 1) + 1])
+xtable(temp, digits = 3)
+
+xtable(1 - temp, digits = 3)

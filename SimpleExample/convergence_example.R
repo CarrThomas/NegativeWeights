@@ -32,11 +32,11 @@ gen_data <- function(n, sigma, pZ, K, a, d, B){
   # B: ATE
   
   # Unobservables
-  U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
+  U <- rmvnorm(n * K, mean = rep(0, 3), sigma = sigma)
   U <- data.frame(U)
   names(U) <- c("U1", "U0", "V")
   
-  # Z
+  # X and Z
   X <- rep(c(0:(K / 2 -1), ((K / 2) + 1):K), each = n)
   Z <- rbinom(n * K, 1, pZ)
   
@@ -107,7 +107,7 @@ gen_vars <- function(data, K, true_s){
     
     if (n_1 > 0 & n_0 > 0){
       est_s[k + 1] <- 
-        2 * (sum(temp$Z * temp$D) / n_1 > sum((1 - temp$Z) * temp$D) / n_0) - 1 
+        2 * (sum(temp$Z * temp$D) / n_1 >= sum((1 - temp$Z) * temp$D) / n_0) - 1 
     }
   }
   data$s_hat <- est_s[data$X + 1]
@@ -201,8 +201,8 @@ make_plot <- function(tau_oracle, tau_feasible, x_lims, B){
 
 ################################## PARAMETERS ##################################
 
-# Number of X values
-K <- 2
+# Number of X values (is K)
+K <- 8
 
 # Switcher shares at each value of X are evenly spaced between -delta and delta
 delta <- 0.2
@@ -212,7 +212,7 @@ w <- delta * (2 * (0:K) / K - 1)
 a <- 0
 d <- qnorm(pnorm(a) + w) - a 
 
-# ATE
+# ATE (also equals the asymptotic limit of the estimand)
 B <- 0 
 
 # True value of the sign function for each value of X
@@ -244,7 +244,7 @@ pZ <- 1 / 2
 
 ################################# GENERATE DATA ################################
 
-n <- c(50, 100, 200, 500) # number of observations for each X
+n <- c(50, 100, 200, 400) # number of observations for each X
 runs <- 1000 # number of draws for each sample size
 
 tau_oracle <- matrix(0, length(n), runs)
