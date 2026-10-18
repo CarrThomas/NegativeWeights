@@ -353,328 +353,328 @@ targets$sd_Z1
 sum((P_x1 - P_x0)[P_x1 > P_x0]) / n
 targets$C_share
 
-# ################################### BLOCK TWO ##################################
-# 
-# # Calibrate outcome parameters to target the OLS bias and the corrected TSLS 
-# # estimate
-# 
-# # Parameters to be calibrated are the elements of the covariance matrix for the
-# # unobservables. 
-# 
-# # Calibrate sigma_1 rho_1v and sigma_0 rho_0v to match the corrected TSLS 
-# # estimate and the OLS bias. These conditions only identify those products. The
-# # individual parameters can be set freely (e.g. sd = 1 if possible)
-# 
-# # Our two targets give a linear system with unknowns sigma_1 rho_1v and
-# # sigma_0 rho_0v. We simply obtain the coefficients of this system and solve
-# # for the unknown. 
-# 
-# zeta_0 <- 0.1 # ATE
-# pZ <- 1 / 2
-# 
-# block_two_targets <- c(0.05, zeta_0 + 0.01) 
-# names(block_two_targets) <- c("bias", "estimand")
-# 
-# # Constants for the TSLS equation
-# C_1 <- zeta_0 
-# C_2 <- (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) * 
-#           (1 - pnorm(-d_0,
-#                      mean = -a_0 * sd_d * sd_a * rho_ad / 
-#                        (1 + sd_a ^ 2),
-#                      sd = sd_d * 
-#                        sqrt(1 - (rho_ad ^ 2) * (sd_a ^ 2) / 
-#                               (1 + sd_a ^ 2)))) - 
-#           dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) * 
-#           (1 - pnorm(-d_0,
-#                      mean = -g_0 * sd_d * sd_g * rho_dg / 
-#                        (1 + sd_g ^ 2),
-#                      sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 / 
-#                                         (1 + sd_g ^ 2)))) -
-#           dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) * 
-#           pnorm(-d_0,
-#                 mean = -a_0 * sd_d * sd_a * rho_ad / 
-#                   (1 + sd_a ^ 2),
-#                 sd = sd_d * sqrt(1 - rho_ad ^ 2 * sd_a ^ 2 / 
-#                                    (1 + sd_a ^ 2))) + 
-#           dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) * 
-#           pnorm(-d_0,
-#                 mean = -g_0 * sd_d * sd_g * rho_dg / 
-#                   (1 + sd_g ^ 2),
-#                 sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 / 
-#                                    (1 + sd_g ^ 2)))) / (shares[5] + shares[6])
-# 
-# # constants for the bias equation
-# integrals <- rep(0, 4)
-# 
-# integrals[1] <- integrate(
-#   f = Vectorize(function(xg, g_0, sd_g){
-#     if(pnorm(g_0 + xg) > 0){
-#       return(dnorm(g_0 + xg) * dnorm(xg, sd = sd_g) / pnorm(g_0 + xg))
-#     }else{
-#       return(0)
-#     }}, SIMPLIFY = TRUE),
-#   lower = -Inf,
-#   upper = Inf,
-#   g_0 = g_0, 
-#   sd_g = sd_g)$value
-# 
-# integrals[2] <- integrate(
-#   f = Vectorize(function(xa, a_0, sd_a){
-#     if(pnorm(a_0 + xa) > 0){
-#       return(dnorm(a_0 + xa) * dnorm(xa, sd = sd_a) / pnorm(a_0 + xa))
-#     }else{
-#       return(0)
-#     }}, SIMPLIFY = TRUE),
-#   lower = -Inf,
-#   upper = Inf,
-#   a_0 = a_0, 
-#   sd_a = sd_a)$value
-# 
-# integrals[3] <- integrate(
-#   f = Vectorize(function(xg, g_0, sd_g){
-#     if((1 - pnorm(g_0 + xg)) > 0){
-#       return(dnorm(g_0 + xg) * dnorm(xg, sd = sd_g) / (1 - pnorm(g_0 + xg)))
-#     }else{
-#       return(0)
-#     }}, SIMPLIFY = TRUE),
-#   lower = -Inf,
-#   upper = Inf,
-#   g_0 = g_0, 
-#   sd_g = sd_g)$value
-# 
-# integrals[4] <- integrate(
-#   f = Vectorize(function(xa, a_0, sd_a){
-#     if((1 - pnorm(a_0 + xa) > 0)){
-#       return(dnorm(a_0 + xa) * dnorm(xa, sd = sd_a) / (1 - pnorm(a_0 + xa)))
-#     }else{
-#       return(0)
-#     }}, SIMPLIFY = TRUE),
-#   lower = -Inf,
-#   upper = Inf,
-#   a_0 = a_0, 
-#   sd_a = sd_a)$value
-# 
-# # analytically calculated bias
-# C_3 <- - pZ * integrals[1] - (1 - pZ) * integrals[2]
-# C_4 <- - pZ * integrals[3] - (1 - pZ) * integrals[4]
-# 
-# # set up the linear system
-# A <- cbind(c(C_2, C_3), c(-C_2, C_4))
-# B <- matrix(block_two_targets - c(C_1, 0), nrow = 2, ncol = 1)
-# 
-# intermediate <- solve(A, B) 
-# 
-# sigma <- diag(1, 3, 3)
-# sigma[1, 2:3] <- intermediate
-# sigma[2:3, 1] <- intermediate
-# colnames(sigma) <- c("V", "U1", "U0")
-# 
-# lambda <- sum(intermediate[1:2]^2) + 0.1
-# diag(sigma)[2:3] <- diag(sigma)[2:3] * lambda
-# det(sigma)
-# 
-# ############################ TEST PARAMETER VALUES #############################
-# 
-# # Obtain the uncorrected TSLS estimate
-# Z <- rbinom(n, 1, pZ)
-# U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
-# colnames(U) <- c("V", "U1", "U0")
-# U <- data.frame(U)
-# 
-# index <- a_0 + X %*% as.matrix(a, k, 1) + Z * (d_0 + X %*% as.matrix(d, k, 1))
-# P <- pnorm(index)
-# D <- as.numeric(index  > U[, 1]) 
-# 
-# B_0 <- 0
-# 
-# # Outcomes
-# Y_0 <- B_0 + U$U0
-# Y_1 <- B_0 + zeta_0 + U$U1
-# Y <- (1 - D) * Y_0 + D * Y_1
-# 
-# # OLS bias
-# data <- data.frame(Y = Y, D = D)
-# OLS <- lm("Y ~ D", data = data)
-# zeta_hat <- OLS$coefficients[2]
-# bias <- zeta_hat - zeta_0
-# 
-# integrals <- rep(0, 4)
-# 
-# integrals[1] <- - sigma[1, 2] * 
-#   integrate(
-#     f = Vectorize(function(xg, g_0, sd_g){
-#       if(pnorm(g_0 + xg) > 0){
-#         return(dnorm(g_0 + xg) * dnorm(xg, sd = sd_g) / pnorm(g_0 + xg))
-#       }else{
-#         return(0)
-#       }}, SIMPLIFY = TRUE),
-#     lower = -Inf,
-#     upper = Inf,
-#     g_0 = g_0, 
-#     sd_g = sd_g)$value
-# 
-# integrals[2] <- - sigma[1, 2] * 
-#   integrate(
-#     f = Vectorize(function(xa, a_0, sd_a){
-#       if(pnorm(a_0 + xa) > 0){
-#         return(dnorm(a_0 + xa) * dnorm(xa, sd = sd_a) / pnorm(a_0 + xa))
-#       }else{
-#         return(0)
-#       }}, SIMPLIFY = TRUE),
-#     lower = -Inf,
-#     upper = Inf,
-#     a_0 = a_0, 
-#     sd_a = sd_a)$value
-# 
-# integrals[3] <- sigma[1, 3] *  
-#   integrate(
-#   f = Vectorize(function(xg, g_0, sd_g){
-#     if((1 - pnorm(g_0 + xg)) > 0){
-#       return(dnorm(g_0 + xg) * dnorm(xg, sd = sd_g) / (1 - pnorm(g_0 + xg)))
-#     }else{
-#       return(0)
-#     }}, SIMPLIFY = TRUE),
-#   lower = -Inf,
-#   upper = Inf,
-#   g_0 = g_0, 
-#   sd_g = sd_g)$value
-# 
-# integrals[4] <- sigma[1, 3] *  
-#   integrate(
-#   f = Vectorize(function(xa, a_0, sd_a){
-#     if((1 - pnorm(a_0 + xa) > 0)){
-#       return(dnorm(a_0 + xa) * dnorm(xa, sd = sd_a) / (1 - pnorm(a_0 + xa)))
-#     }else{
-#       return(0)
-#     }}, SIMPLIFY = TRUE),
-#   lower = -Inf,
-#   upper = Inf,
-#   a_0 = a_0, 
-#   sd_a = sd_a)$value
-# 
-# mean(U$U1[D == 1]) - mean(U$U0[D == 0])
-# bias
-# 
-# # analytically calculated bias
-# pZ * (integrals[1] - integrals[3]) + (1 - pZ) * (integrals[2] - integrals[4])
-# 
-# # TSLS numerator
-# Z_tilde <- Z - mean(Z)
-# cov(Y, Z_tilde)
-# 
-# # TSLS estimate
-# cov(Y, Z_tilde) / cov(D, Z_tilde)
-# (zeta_0 * (pnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) - 
-#              pnorm(a_0, sd = sqrt(1 + sd_a ^ 2))) + 
-#     (sigma[1, 2] - sigma[1, 3]) * 
-#     (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) - 
-#        dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)))) / 
-#   (pnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) - 
-#      pnorm(a_0, sd = sqrt(1 + sd_a ^ 2)))
-# 
-# cov(Y - B_0 - zeta_0 * D, Z_tilde) / cov(D, Z_tilde)
-# ((sigma[1, 2] - sigma[1, 3]) * 
-#     (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) - 
-#        dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)))) / 
-#   (pnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) - 
-#      pnorm(a_0, sd = sqrt(1 + sd_a ^ 2)))
-# 
-# # Corrected TSLS numerator
-# s <- sign(d_0 + X %*% as.matrix(d, k, 1))
-# cov(D, s * Z_tilde) / (pZ * (1 - pZ)) # should be compliers + defiers
-# cov(D, Z_tilde) / (pZ * (1 - pZ)) # should be compliers - defiers
-# 
-# cov(Y, s * Z_tilde)
-# 
-# rho_dg <- sum(d * g) / (sd_d * sd_g)
-# 
-# # analytical 
-# pZ * (1 - pZ) * (zeta_0 * 0.2 + 
-#                    (sigma[1, 2] - sigma[1, 3]) *
-#                    (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) * 
-#                       (1 - pnorm(-d_0,
-#                                  mean = -a_0 * sd_d * sd_a * rho_ad / 
-#                                    (1 + sd_a ^ 2),
-#                                  sd = sd_d * 
-#                                    sqrt(1 - (rho_ad ^ 2) * (sd_a ^ 2) / 
-#                                           (1 + sd_a ^ 2)))) - 
-#                       dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) * 
-#                       (1 - pnorm(-d_0,
-#                                  mean = -g_0 * sd_d * sd_g * rho_dg / 
-#                                    (1 + sd_g ^ 2),
-#                                  sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 / 
-#                                                     (1 + sd_g ^ 2)))) -
-#                       dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) * 
-#                       pnorm(-d_0,
-#                             mean = -a_0 * sd_d * sd_a * rho_ad / 
-#                               (1 + sd_a ^ 2),
-#                             sd = sd_d * sqrt(1 - rho_ad ^ 2 * sd_a ^ 2 / 
-#                                                (1 + sd_a ^ 2))) + 
-#                       dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) * 
-#                       pnorm(-d_0,
-#                             mean = -g_0 * sd_d * sd_g * rho_dg / 
-#                               (1 + sd_g ^ 2),
-#                             sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 / 
-#                                                (1 + sd_g ^ 2)))))
-# 
-# cov(Y - B_0 - D * zeta_0, s * Z_tilde)
-# # analytical 
-# pZ * (1 - pZ) * ((sigma[1, 2] - sigma[1, 3]) *
-#                    (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) * 
-#                       (1 - pnorm(-d_0,
-#                                  mean = -a_0 * sd_d * sd_a * rho_ad / 
-#                                    (1 + sd_a ^ 2),
-#                                  sd = sd_d * 
-#                                    sqrt(1 - (rho_ad ^ 2) * (sd_a ^ 2) / 
-#                                           (1 + sd_a ^ 2)))) - 
-#                       dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) * 
-#                       (1 - pnorm(-d_0,
-#                                  mean = -g_0 * sd_d * sd_g * rho_dg / 
-#                                    (1 + sd_g ^ 2),
-#                                  sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 / 
-#                                                     (1 + sd_g ^ 2)))) -
-#                       dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) * 
-#                       pnorm(-d_0,
-#                             mean = -a_0 * sd_d * sd_a * rho_ad / 
-#                               (1 + sd_a ^ 2),
-#                             sd = sd_d * sqrt(1 - rho_ad ^ 2 * sd_a ^ 2 / 
-#                                                (1 + sd_a ^ 2))) + 
-#                       dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) * 
-#                       pnorm(-d_0,
-#                             mean = -g_0 * sd_d * sd_g * rho_dg / 
-#                               (1 + sd_g ^ 2),
-#                             sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 / 
-#                                                (1 + sd_g ^ 2)))))
-# 
-# # corrected estimate
-# cov(Y, s * Z_tilde) / cov(D, s * Z_tilde)
-# 
-# zeta_0 + ((sigma[1, 2] - sigma[1, 3]) *
-#             (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) * 
-#                (1 - pnorm(-d_0,
-#                           mean = -a_0 * sd_d * sd_a * rho_ad / 
-#                             (1 + sd_a ^ 2),
-#                           sd = sd_d * 
-#                             sqrt(1 - (rho_ad ^ 2) * (sd_a ^ 2) / 
-#                                    (1 + sd_a ^ 2)))) - 
-#                dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) * 
-#                (1 - pnorm(-d_0,
-#                           mean = -g_0 * sd_d * sd_g * rho_dg / 
-#                             (1 + sd_g ^ 2),
-#                           sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 / 
-#                                              (1 + sd_g ^ 2)))) -
-#                dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) * 
-#                pnorm(-d_0,
-#                      mean = -a_0 * sd_d * sd_a * rho_ad / 
-#                        (1 + sd_a ^ 2),
-#                      sd = sd_d * sqrt(1 - rho_ad ^ 2 * sd_a ^ 2 / 
-#                                         (1 + sd_a ^ 2))) + 
-#                dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) * 
-#                pnorm(-d_0,
-#                      mean = -g_0 * sd_d * sd_g * rho_dg / 
-#                        (1 + sd_g ^ 2),
-#                      sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 / 
-#                                         (1 + sd_g ^ 2))))) / 0.2
+################################### BLOCK TWO ##################################
+
+# Calibrate outcome parameters to target the OLS bias and the corrected TSLS
+# estimate
+
+# Parameters to be calibrated are the elements of the covariance matrix for the
+# unobservables. 
+
+# Calibrate sigma_1 rho_1v and sigma_0 rho_0v to match the corrected TSLS
+# estimate and the OLS bias. These conditions only identify those products. The
+# individual parameters can be set freely (e.g. sd = 1 if possible)
+
+# Our two targets give a linear system with unknowns sigma_1 rho_1v and
+# sigma_0 rho_0v. We simply obtain the coefficients of this system and solve
+# for the unknown.
+
+zeta_0 <- 0.1 # ATE
+pZ <- 1 / 2
+
+block_two_targets <- c(0.05, zeta_0 + 0.01)
+names(block_two_targets) <- c("bias", "estimand")
+
+# Constants for the TSLS equation
+C_1 <- zeta_0
+C_2 <- (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) *
+          (1 - pnorm(-d_0,
+                     mean = -a_0 * sd_d * sd_a * rho_ad /
+                       (1 + sd_a ^ 2),
+                     sd = sd_d *
+                       sqrt(1 - (rho_ad ^ 2) * (sd_a ^ 2) /
+                              (1 + sd_a ^ 2)))) -
+          dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) *
+          (1 - pnorm(-d_0,
+                     mean = -g_0 * sd_d * sd_g * rho_dg /
+                       (1 + sd_g ^ 2),
+                     sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 /
+                                        (1 + sd_g ^ 2)))) -
+          dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) *
+          pnorm(-d_0,
+                mean = -a_0 * sd_d * sd_a * rho_ad /
+                  (1 + sd_a ^ 2),
+                sd = sd_d * sqrt(1 - rho_ad ^ 2 * sd_a ^ 2 /
+                                   (1 + sd_a ^ 2))) +
+          dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) *
+          pnorm(-d_0,
+                mean = -g_0 * sd_d * sd_g * rho_dg /
+                  (1 + sd_g ^ 2),
+                sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 /
+                                   (1 + sd_g ^ 2)))) / (shares[5] + shares[6])
+
+# constants for the bias equation
+integrals <- rep(0, 4)
+
+integrals[1] <- integrate(
+  f = Vectorize(function(xg, g_0, sd_g){
+    if(pnorm(g_0 + xg) > 0){
+      return(dnorm(g_0 + xg) * dnorm(xg, sd = sd_g) / pnorm(g_0 + xg))
+    }else{
+      return(0)
+    }}, SIMPLIFY = TRUE),
+  lower = -Inf,
+  upper = Inf,
+  g_0 = g_0,
+  sd_g = sd_g)$value
+
+integrals[2] <- integrate(
+  f = Vectorize(function(xa, a_0, sd_a){
+    if(pnorm(a_0 + xa) > 0){
+      return(dnorm(a_0 + xa) * dnorm(xa, sd = sd_a) / pnorm(a_0 + xa))
+    }else{
+      return(0)
+    }}, SIMPLIFY = TRUE),
+  lower = -Inf,
+  upper = Inf,
+  a_0 = a_0,
+  sd_a = sd_a)$value
+
+integrals[3] <- integrate(
+  f = Vectorize(function(xg, g_0, sd_g){
+    if((1 - pnorm(g_0 + xg)) > 0){
+      return(dnorm(g_0 + xg) * dnorm(xg, sd = sd_g) / (1 - pnorm(g_0 + xg)))
+    }else{
+      return(0)
+    }}, SIMPLIFY = TRUE),
+  lower = -Inf,
+  upper = Inf,
+  g_0 = g_0,
+  sd_g = sd_g)$value
+
+integrals[4] <- integrate(
+  f = Vectorize(function(xa, a_0, sd_a){
+    if((1 - pnorm(a_0 + xa) > 0)){
+      return(dnorm(a_0 + xa) * dnorm(xa, sd = sd_a) / (1 - pnorm(a_0 + xa)))
+    }else{
+      return(0)
+    }}, SIMPLIFY = TRUE),
+  lower = -Inf,
+  upper = Inf,
+  a_0 = a_0,
+  sd_a = sd_a)$value
+
+# analytically calculated bias
+C_3 <- - pZ * integrals[1] - (1 - pZ) * integrals[2]
+C_4 <- - pZ * integrals[3] - (1 - pZ) * integrals[4]
+
+# set up the linear system
+A <- cbind(c(C_2, C_3), c(-C_2, C_4))
+B <- matrix(block_two_targets - c(C_1, 0), nrow = 2, ncol = 1)
+
+intermediate <- solve(A, B)
+
+sigma <- diag(1, 3, 3)
+sigma[1, 2:3] <- intermediate
+sigma[2:3, 1] <- intermediate
+colnames(sigma) <- c("V", "U1", "U0")
+
+lambda <- sum(intermediate[1:2]^2) + 0.1
+diag(sigma)[2:3] <- diag(sigma)[2:3] * lambda
+det(sigma)
+
+############################ TEST PARAMETER VALUES #############################
+
+# Obtain the uncorrected TSLS estimate
+Z <- rbinom(n, 1, pZ)
+U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
+colnames(U) <- c("V", "U1", "U0")
+U <- data.frame(U)
+
+index <- a_0 + X %*% as.matrix(a, k, 1) + Z * (d_0 + X %*% as.matrix(d, k, 1))
+P <- pnorm(index)
+D <- as.numeric(index  > U[, 1])
+
+B_0 <- 0
+
+# Outcomes
+Y_0 <- B_0 + U$U0
+Y_1 <- B_0 + zeta_0 + U$U1
+Y <- (1 - D) * Y_0 + D * Y_1
+
+# OLS bias
+data <- data.frame(Y = Y, D = D)
+OLS <- lm("Y ~ D", data = data)
+zeta_hat <- OLS$coefficients[2]
+bias <- zeta_hat - zeta_0
+
+integrals <- rep(0, 4)
+
+integrals[1] <- - sigma[1, 2] *
+  integrate(
+    f = Vectorize(function(xg, g_0, sd_g){
+      if(pnorm(g_0 + xg) > 0){
+        return(dnorm(g_0 + xg) * dnorm(xg, sd = sd_g) / pnorm(g_0 + xg))
+      }else{
+        return(0)
+      }}, SIMPLIFY = TRUE),
+    lower = -Inf,
+    upper = Inf,
+    g_0 = g_0,
+    sd_g = sd_g)$value
+
+integrals[2] <- - sigma[1, 2] *
+  integrate(
+    f = Vectorize(function(xa, a_0, sd_a){
+      if(pnorm(a_0 + xa) > 0){
+        return(dnorm(a_0 + xa) * dnorm(xa, sd = sd_a) / pnorm(a_0 + xa))
+      }else{
+        return(0)
+      }}, SIMPLIFY = TRUE),
+    lower = -Inf,
+    upper = Inf,
+    a_0 = a_0,
+    sd_a = sd_a)$value
+
+integrals[3] <- sigma[1, 3] *
+  integrate(
+  f = Vectorize(function(xg, g_0, sd_g){
+    if((1 - pnorm(g_0 + xg)) > 0){
+      return(dnorm(g_0 + xg) * dnorm(xg, sd = sd_g) / (1 - pnorm(g_0 + xg)))
+    }else{
+      return(0)
+    }}, SIMPLIFY = TRUE),
+  lower = -Inf,
+  upper = Inf,
+  g_0 = g_0,
+  sd_g = sd_g)$value
+
+integrals[4] <- sigma[1, 3] *
+  integrate(
+  f = Vectorize(function(xa, a_0, sd_a){
+    if((1 - pnorm(a_0 + xa) > 0)){
+      return(dnorm(a_0 + xa) * dnorm(xa, sd = sd_a) / (1 - pnorm(a_0 + xa)))
+    }else{
+      return(0)
+    }}, SIMPLIFY = TRUE),
+  lower = -Inf,
+  upper = Inf,
+  a_0 = a_0,
+  sd_a = sd_a)$value
+
+mean(U$U1[D == 1]) - mean(U$U0[D == 0])
+bias
+
+# analytically calculated bias
+pZ * (integrals[1] - integrals[3]) + (1 - pZ) * (integrals[2] - integrals[4])
+
+# TSLS numerator
+Z_tilde <- Z - mean(Z)
+cov(Y, Z_tilde)
+
+# TSLS estimate
+cov(Y, Z_tilde) / cov(D, Z_tilde)
+(zeta_0 * (pnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) -
+             pnorm(a_0, sd = sqrt(1 + sd_a ^ 2))) +
+    (sigma[1, 2] - sigma[1, 3]) *
+    (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) -
+       dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)))) /
+  (pnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) -
+     pnorm(a_0, sd = sqrt(1 + sd_a ^ 2)))
+
+cov(Y - B_0 - zeta_0 * D, Z_tilde) / cov(D, Z_tilde)
+((sigma[1, 2] - sigma[1, 3]) *
+    (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) -
+       dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)))) /
+  (pnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) -
+     pnorm(a_0, sd = sqrt(1 + sd_a ^ 2)))
+
+# Corrected TSLS numerator
+s <- sign(d_0 + X %*% as.matrix(d, k, 1))
+cov(D, s * Z_tilde) / (pZ * (1 - pZ)) # should be compliers + defiers
+cov(D, Z_tilde) / (pZ * (1 - pZ)) # should be compliers - defiers
+
+cov(Y, s * Z_tilde)
+
+rho_dg <- sum(d * g) / (sd_d * sd_g)
+
+# analytical
+pZ * (1 - pZ) * (zeta_0 * 0.2 +
+                   (sigma[1, 2] - sigma[1, 3]) *
+                   (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) *
+                      (1 - pnorm(-d_0,
+                                 mean = -a_0 * sd_d * sd_a * rho_ad /
+                                   (1 + sd_a ^ 2),
+                                 sd = sd_d *
+                                   sqrt(1 - (rho_ad ^ 2) * (sd_a ^ 2) /
+                                          (1 + sd_a ^ 2)))) -
+                      dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) *
+                      (1 - pnorm(-d_0,
+                                 mean = -g_0 * sd_d * sd_g * rho_dg /
+                                   (1 + sd_g ^ 2),
+                                 sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 /
+                                                    (1 + sd_g ^ 2)))) -
+                      dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) *
+                      pnorm(-d_0,
+                            mean = -a_0 * sd_d * sd_a * rho_ad /
+                              (1 + sd_a ^ 2),
+                            sd = sd_d * sqrt(1 - rho_ad ^ 2 * sd_a ^ 2 /
+                                               (1 + sd_a ^ 2))) +
+                      dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) *
+                      pnorm(-d_0,
+                            mean = -g_0 * sd_d * sd_g * rho_dg /
+                              (1 + sd_g ^ 2),
+                            sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 /
+                                               (1 + sd_g ^ 2)))))
+
+cov(Y - B_0 - D * zeta_0, s * Z_tilde)
+# analytical
+pZ * (1 - pZ) * ((sigma[1, 2] - sigma[1, 3]) *
+                   (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) *
+                      (1 - pnorm(-d_0,
+                                 mean = -a_0 * sd_d * sd_a * rho_ad /
+                                   (1 + sd_a ^ 2),
+                                 sd = sd_d *
+                                   sqrt(1 - (rho_ad ^ 2) * (sd_a ^ 2) /
+                                          (1 + sd_a ^ 2)))) -
+                      dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) *
+                      (1 - pnorm(-d_0,
+                                 mean = -g_0 * sd_d * sd_g * rho_dg /
+                                   (1 + sd_g ^ 2),
+                                 sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 /
+                                                    (1 + sd_g ^ 2)))) -
+                      dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) *
+                      pnorm(-d_0,
+                            mean = -a_0 * sd_d * sd_a * rho_ad /
+                              (1 + sd_a ^ 2),
+                            sd = sd_d * sqrt(1 - rho_ad ^ 2 * sd_a ^ 2 /
+                                               (1 + sd_a ^ 2))) +
+                      dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) *
+                      pnorm(-d_0,
+                            mean = -g_0 * sd_d * sd_g * rho_dg /
+                              (1 + sd_g ^ 2),
+                            sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 /
+                                               (1 + sd_g ^ 2)))))
+
+# corrected estimate
+cov(Y, s * Z_tilde) / cov(D, s * Z_tilde)
+
+zeta_0 + ((sigma[1, 2] - sigma[1, 3]) *
+            (dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) *
+               (1 - pnorm(-d_0,
+                          mean = -a_0 * sd_d * sd_a * rho_ad /
+                            (1 + sd_a ^ 2),
+                          sd = sd_d *
+                            sqrt(1 - (rho_ad ^ 2) * (sd_a ^ 2) /
+                                   (1 + sd_a ^ 2)))) -
+               dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) *
+               (1 - pnorm(-d_0,
+                          mean = -g_0 * sd_d * sd_g * rho_dg /
+                            (1 + sd_g ^ 2),
+                          sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 /
+                                             (1 + sd_g ^ 2)))) -
+               dnorm(a_0, sd = sqrt(1 + sd_a ^ 2)) *
+               pnorm(-d_0,
+                     mean = -a_0 * sd_d * sd_a * rho_ad /
+                       (1 + sd_a ^ 2),
+                     sd = sd_d * sqrt(1 - rho_ad ^ 2 * sd_a ^ 2 /
+                                        (1 + sd_a ^ 2))) +
+               dnorm(g_0, sd = sqrt(1 + sd_g ^ 2)) *
+               pnorm(-d_0,
+                     mean = -g_0 * sd_d * sd_g * rho_dg /
+                       (1 + sd_g ^ 2),
+                     sd = sd_d * sqrt(1 - rho_dg ^ 2 * sd_g ^ 2 /
+                                        (1 + sd_g ^ 2))))) / 0.2
 
 ###################### BLOCK TWO APPROXIMATE CALIBRATION #######################
 

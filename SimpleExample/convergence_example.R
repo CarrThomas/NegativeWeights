@@ -192,7 +192,18 @@ make_plot <- function(tau_oracle, tau_feasible, x_lims, B){
     theme(legend.title = element_blank()) +
     scale_color_manual(values = c("Oracle" = "#F8766D",
                                   "Feasible" = "#619CFF",
-                                  "Asymptotic Limit" = "black")) + 
+                                  "Asymptotic Limit" = "black"),
+                       labels = c("Oracle" = expression(sqrt(n) * 
+                                                          "(" * 
+                                                          tau[o] - 
+                                                          tau[r]^"*" 
+                                                        * ")"),
+                                  "Feasible" = expression(sqrt(n) * 
+                                                            "(" * 
+                                                            tau[r] - 
+                                                            tau[r]^"*" 
+                                                          * ")"),
+                                  "Asymptotic Limit" = expression(tau[r]^"*"))) + 
     xlim(x_lims[1], x_lims[2]) +  
     labs(x = "", y = "") + 
     theme(legend.position = c(0.2, 0.8))
