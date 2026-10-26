@@ -372,7 +372,7 @@ P_correct <- P_correct[, c(2:K, (K + 2):(2 * K))]
 P_correct <- P_correct[, c((K - 1):1,K:(2 * (K - 1)))]
 
 # add a column for the probability that all are correct
-apply(P_correct, 1, prod)
+# apply(P_correct, 1, prod)
 P_correct <- cbind(P_correct, apply(P_correct, 1, prod))
 xtable(P_correct, digits = 3)
 

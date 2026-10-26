@@ -1,13 +1,12 @@
 #################################### SUMMARY ################################### 
 
-# This scipt performs Monte Carlo for corrected TSLS estimator.
+# This scipt performs Monte Carlo for the feasible reordered IV estimator
 
 # The first stage is assumed to be
-# D = 1(a_0 + x'a + z(d_0 + x'd) + V > 0)
+# D = 1(z * x'd - V > 0)
 # where the marginal distribution of V is N(0, 1), so the propensity score is
-# p(x,z) = Phi(a_0 + x'a + z(d_0 + x'd))
-# In this formulation, the parameters d_0 and d control the sign of the 
-# relationship between Z and D. 
+# p(x,z) = Phi(z * x'd)
+# x'd controls the sign of the relationship between Z and D. 
 
 # We use the maximum rank correlation estimator to obtain estimates of the first
 # stage parameters. This estimator does not estimate a_0, and the remaining 
@@ -15,11 +14,12 @@
 # does not perturb ranks, and multiplying all non-constant terms by a positive
 # constant would also not affect ranks)
 
-# The second stage is assumed to be
-# Y(0) = x'B + U(0)
-# Y(1) = zeta_0 + x'B + U(1)
+# The second stage is 
+# Y(0) = U(0)
+# Y(1) = B_0 + f(x'B) + U(1)
 # Y = Y(0) + D(Y(1) - Y(0))
-# where zeta_0 is the ATE and (V, U(1), U(0)) are jointly normal. 
+# where f() is a function which varies between specifications and
+# (V, U(1), U(0)) are jointly normal. 
 
 ################################# FRONT MATTER #################################
 
@@ -34,6 +34,300 @@ library(boot)
 library(xtable)
 
 path <- getwd()
+
+################################## CALIBRATION #################################
+
+# Find constraints on d'd that give the desired number of compliers and defiers
+
+kernel <- function(z, sd_d)(
+  
+  return((pnorm(z) - pnorm(0)) * dnorm(z, mean = 0, sd = sd_d))
+  
+)
+
+# initial guess
+n_points <- 101
+sd_d <- seq(0.01, 5, length.out = n_points)
+compliers <- rep(0, n_points)
+
+for (i in 1:n_points){
+  
+  compliers[i] <- integrate(kernel, lower = 0, upper = Inf, sd_d = sd_d[i])$value
+  
+}
+
+target <- 0.1
+e_tol <- 0.00000001 # error tolerance
+
+index <- which.min(abs(compliers - target))
+upper <- sd_d[min(n_points, index + 1)]
+lower <- sd_d[max(1, index - 1)]
+error <- abs(compliers[index] - target)
+
+# quick loop to improve
+while(error > e_tol){
+  
+  sd_d <- seq(lower, upper, length.out = n_points)
+  for (i in 1:n_points){
+    
+    compliers[i] <- integrate(kernel, lower = 0, upper = Inf, sd_d = sd_d[i])$value
+    
+  }
+  
+  index <- which.min(abs(compliers - target))
+  upper <- sd_d[min(n_points, index + 1)]
+  lower <- sd_d[max(1, index - 1)]
+  error <- abs(compliers[index] - target)
+  
+}
+
+# final answer
+sd_d <- sd_d[index]
+
+############################## VALIDATE PARAMETERS #############################
+
+# Switcher share
+K <- 3 # number of X variables
+n <- 100000
+X <- matrix(rnorm(n * K), nrow = n, ncol = K)
+
+d <- runif(K, min = -1, max = 1)
+d <- d * sd_d / sqrt(sum(d * d))
+
+mean(abs(pnorm(X %*% matrix(d, nrow = K, ncol = 1)) - pnorm(0)))
+2 * target
+
+################################## CHECK LATES #################################
+
+K <- 3
+d <- runif(K, min = - 1, max = 1)
+d <- d / sqrt(sum(d ^ 2))
+
+# # Randomly generate a covariance matrix for the unobservables
+# A <- matrix(runif(9, -1, 1), 3, 3)
+# sigma <- A %*% t(A)
+# # Scale to be a correlation matrix
+# for (k in 1:3){
+# 
+#   sd_k <- sqrt(sigma[k, k])
+#   sigma[, k] <- sigma[, k] / sd_k
+#   sigma[k, ] <- sigma[k, ] / sd_k
+# 
+# }
+
+# prespecified correlation matrix, variable order is (U1, U0, V)
+sigma <- diag(1, K)
+sigma[2, 1] <- -0.25
+sigma[3, 1] <- -0.5
+sigma[3, 2] <- 0.5
+sigma[1, 2] <- -0.25
+sigma[1, 3] <- -0.5
+sigma[2, 3] <- 0.5
+
+results <- list()
+
+# randomly draw X
+X <- rnorm(3, mean = 0, sd = 1)
+Xd <- sum(X * d)
+results$Xd = Xd
+
+# LATE by simulation
+n <- 100000
+
+U <- rmvnorm(n, mean = rep(0, 3), sigma = sigma)
+colnames(U) <- c("U1", "U0", "V")
+U <- data.frame(U)
+
+Z <- rbinom(n, 1, 1 / 2)
+D <- (Z * Xd >= U$V)
+Y <- U$U0 + D * (U$U1 - U$U0)
+
+data <- data.frame(Y = Y, D = D, Z = Z)
+
+# data LATE
+cov(Y, Z) / cov(D, Z)
+
+D_hat <- lm(D ~ Z, data = data)$fitted.values
+results$data <- lm(Y ~ D_hat)$coefficients[2]
+
+# analytical LATE
+results$analytical <- 
+  (sigma[3, 1] - sigma[3, 2]) * (dnorm(0) - dnorm(Xd)) / (pnorm(Xd) - pnorm(0))
+
+results
+
+############################### SWITCHER DENSITY ###############################
+
+n_points <- 101
+C <- seq(0, 1/2, length.out = n_points)
+dens <- rep(0, n_points)
+dist <- rep(0, n_points)
+
+sd_d <- 0.25
+
+for (i in 1:n_points){
+  
+  dist[i] <- pnorm(qnorm(pnorm(0) + C[i]), mean = 0, sd = sd_d) -
+    pnorm(qnorm(pnorm(0) - C[i]), mean = 0, sd = sd_d)
+  dens[i] <- (1 / dnorm(qnorm(pnorm(0) + C[i]))) * 
+    dnorm(qnorm(pnorm(0) + C[i]), mean = 0, sd = sd_d) + 
+    (1 / dnorm(qnorm(pnorm(0) - C[i]))) *
+    dnorm(qnorm(pnorm(0) - C[i]), mean = 0, sd = sd_d)
+  
+}
+
+plot(C, dist)
+plot(C, dens)
+
+# verify by simulation
+K <- 3
+n <- 100000
+d <- runif(K, min = - 1, max  = 1)
+d <- d * sd_d / sqrt(sum(d ^ 2))
+X <- matrix(rnorm(n * K), nrow = n, ncol = K)
+Xd <- X %*% as.matrix(d, nrow = K, ncol = 1)
+Delta <- abs(pnorm(Xd) - pnorm(0))
+
+emp_dist <- ecdf(Delta)
+data_dist <- rep(0, n_points)
+
+for (i in 1:n_points){
+  
+  data_dist[i] <- emp_dist(C[i])
+  
+}
+
+plot_data <- data.frame(C = C, data = data_dist, analytical = dist)
+plot_data %>% ggplot() + 
+  geom_line(aes(x = C, y = data, col = "data")) + 
+  geom_line(aes(x = C, y = analytical, col = "analytical")) + 
+  theme_bw() + 
+  theme(legend.title = element_blank())
+
+data_dens <- density(Delta)
+plot(data_dens)
+plot(C, dens)
+
+########################## EXPECTED TREATMENT EFFECTS ##########################
+
+# Get the expected treatment effect for each mass of switchers
+
+# prespecified correlation matrix, variable order is (U1, U0, V)
+sigma <- diag(1, 3)
+sigma[2, 1] <- -0.25
+sigma[3, 1] <- -0.5
+sigma[3, 2] <- 0.5
+sigma[1, 2] <- -0.25
+sigma[1, 3] <- -0.5
+sigma[2, 3] <- 0.5
+
+rho_1V <- sigma[3, 1]
+rho_0V <- sigma[3, 2]
+
+K <- 3 # number of controls
+n_points <- 101 # number of switcher values where we evaluate E[tau]
+
+# Randomly generate parameter vectors 
+d <- runif(K, -1, 1)
+d <- d / sqrt(sum(d ^ 2))
+B <- runif(K, -1, 1)
+B <- B / sqrt(sum(B ^ 2))
+B_0 <- 1 # ATE
+
+# Values of switcher mass
+C <- seq(-1 / 2, 1 / 2, length.out = n_points)
+E_tau <- rep(0, n_points) # expected treatment effect
+
+sd_d <- sqrt(sum(d ^ 2))
+sd_B <- sqrt(sum(B ^ 2))
+rho_Bd <- sum(B * d) / (sd_d * sd_B)
+
+for (i in 1:n_points){
+  
+  # implied value of X'd from C
+  Xd <- qnorm(pnorm(0) + C[i])
+  
+  # evaluate the expected treatment effect
+  if (Xd == 0){
+    E_tau[i] <- B_0
+  }else{
+    E_tau[i] <- B_0 + sd_d * rho_Bd * Xd  / sd_B + 
+      (rho_1V - rho_0V) * (dnorm(0) - dnorm(Xd)) / (pnorm(Xd) - pnorm(0))
+  }
+
+}
+
+# validate using data
+n <- 100000
+
+X <- matrix(rnorm(n *K), nrow = n, ncol = K)
+Xd <- X %*% as.matrix(d, nrow = K, ncol = 1)
+XB <- X %*% as.matrix(B, nrow = K, ncol = 1)
+
+Z <- rbinom(n, 1, 1 / 2)
+
+U <- rmvnorm(n, mean = rep(0, K), sigma = sigma)
+colnames(U) <- c("U1", "U0", "V")
+U <- data.frame(U)
+Y_0 <- U$U0
+Y_1 <- B_0 + XB + U$U1
+D <- (Z * Xd >= U$V)
+Y <- Y_0 + D * (Y_1 - Y_0)
+
+data <- data.frame(Y = Y, Z = Z, D = D, Xd = Xd, XB = XB)
+data$C <- pnorm(Xd) - pnorm(0)
+
+# split into bins, get an average for each bin
+C_bins <- (C[1:(n_points - 1)] + C[2:n_points]) / 2
+C_bins <- c(-1 / 2, C_bins, 1 / 2)
+
+tau_data <- rep(0, n_points)
+
+for (i in 1:n_points){
+  
+  temp_data <- 
+    data[as.logical((data$C >= C_bins[i]) * (data$C < C_bins[i + 1])), ]
+  
+  check <- (sum(temp_data$Z) > 0) * (sum(1 - temp_data$Z) > 0)
+  
+  if (check == 1){
+    
+    temp_data$D_hat <- lm(D ~ Z, data = temp_data)$fitted.values
+    tau_data[i] <- lm(Y ~ D_hat, data = temp_data)$coefficients[2]
+    
+  }
+  
+}
+
+plot(C, pmax(-3, pmin(tau_data, 3)))
+plot(C, E_tau)
+
+# Pick one point and evaluate
+n_draws <- 100
+comparison <- matrix(0, nrow = n_draws, ncol = 3)
+colnames(comparison) <- c("Xd", "data", "analytical")
+comparison <- data.frame(comparison)
+
+for (i in 1:n_draws){
+  
+  X <- rnorm(K)
+  Xd <- sum(X * d)
+  comparison$Xd[i] <- Xd
+  
+  lower <- min(0, Xd)
+  upper <- max(0, Xd)
+  include <- as.logical((U$V > lower) * (U$V < upper))
+  
+  XB <- rnorm(n, mean = sd_B * rho_Bd * Xd / sd_d, sd = sd_B * sqrt(1 - rho_Bd ^ 2))
+  
+  comparison$data[i] <- B_0 + mean(XB) + mean((U$U1 - U$U0)[include])
+  comparison$analytical[i] <- B_0 + sd_d * rho_Bd * Xd  / sd_B + 
+    (rho_1V - rho_0V) * (dnorm(0) - dnorm(Xd)) / (pnorm(Xd) - pnorm(0)) 
+  
+}
+
+plot(comparison$analytical, comparison$data)
+
 
 ################################### FUNCTIONS ##################################
 
