@@ -262,8 +262,8 @@ get_coverage <- function(tau, sigma_o, B, n, K){
   
   for (i in 1:3){
     
-    coverage[i, ] <- as.numeric(tau + CI[i, ] > B)
-    coverage[i, ] <- coverage[i, ] * as.numeric(tau - CI[i, ] < B)
+    coverage[i, ] <- as.numeric((tau + CI[i, ]) > B)
+    coverage[i, ] <- coverage[i, ] * as.numeric((tau - CI[i, ]) < B)
     
   }
   
@@ -273,8 +273,6 @@ get_coverage <- function(tau, sigma_o, B, n, K){
   return(coverage)
   
 }
-
-
 
 # get_coverage <- function(tau_oracle, tau_feasible, sigma_o, B, n, K){
 #   
@@ -319,7 +317,7 @@ get_coverage <- function(tau, sigma_o, B, n, K){
 #   
 # }
 
-make_plot <- function(tau_oracle, tau_feasible, x_lims, B){
+make_plot <- function(tau_oracle, tau_feasible, x_lims){
   
   oracle_dens <- density(tau_oracle)
   oracle_data <- data.frame(x = oracle_dens$x, y = oracle_dens$y)
@@ -333,13 +331,12 @@ make_plot <- function(tau_oracle, tau_feasible, x_lims, B){
               linetype = "dashed") +
     geom_line(aes(x = x, y = y, col = "Feasible"), 
               data = feasible_data) +
-    geom_vline(aes(xintercept = B, col = "Asymptotic Limit"), 
-               linetype = "dotted") + 
+    geom_vline(aes(xintercept = 0, col = "black"), 
+               linetype = "dotted", show.legend = FALSE) + 
     theme_bw() +
     theme(legend.title = element_blank()) +
     scale_color_manual(values = c("Oracle" = "#F8766D",
-                                  "Feasible" = "#619CFF",
-                                  "Asymptotic Limit" = "black"),
+                                  "Feasible" = "#619CFF"),
                        labels = c("Oracle" = expression(sqrt(n) * 
                                                           "(" * 
                                                           tau[o] - 
@@ -349,13 +346,27 @@ make_plot <- function(tau_oracle, tau_feasible, x_lims, B){
                                                             "(" * 
                                                             tau[r] - 
                                                             tau[r]^"*" 
-                                                          * ")"),
-                                  "Asymptotic Limit" = expression(tau[r]^"*"))) + 
+                                                          * ")"))) + 
     xlim(x_lims[1], x_lims[2]) +  
     labs(x = "", y = "") + 
-    theme(legend.position = c(0.2, 0.8))
+    theme(legend.position = c(0.2, 0.9))
   
 }
+
+# scale_color_manual(values = c("Oracle" = "#F8766D",
+#                               "Feasible" = "#619CFF",
+#                               "Asymptotic Limit" = "black"),
+#                    labels = c("Oracle" = expression(sqrt(n) * 
+#                                                       "(" * 
+#                                                       tau[o] - 
+#                                                       tau[r]^"*" 
+#                                                     * ")"),
+#                               "Feasible" = expression(sqrt(n) * 
+#                                                         "(" * 
+#                                                         tau[r] - 
+#                                                         tau[r]^"*" 
+#                                                       * ")"),
+#                               "Asymptotic Limit" = "")) 
 
 ################################## PARAMETERS ##################################
 
@@ -446,7 +457,7 @@ for (i in 1:length(n)){
 
 ############################## SUMMARY STATISTICS ##############################
 
-# Returns the mean, variance, MSE, median, 0.25 and 0.75 quartiles of the 
+# Returns the mean, standard error, MSE, median, 0.25 and 0.75 quartiles of the 
 # sampling distribution of the oracle and feasible estimators. 
 
 feasible_sum_stats <- matrix(0, length(n), 6)
@@ -509,20 +520,16 @@ x_lims[2] <- quantile(c(tau_feasible, tau_oracle), 0.995, na.rm = TRUE)
 
 make_plot(tau_oracle = tau_oracle[1, ],
           tau_feasible = tau_feasible[1, ],
-          x_lims = x_lims,
-          B = B)
+          x_lims = x_lims)
 make_plot(tau_oracle = tau_oracle[2, ],
           tau_feasible = tau_feasible[2, ],
-          x_lims = x_lims,
-          B = B)
+          x_lims = x_lims)
 make_plot(tau_oracle = tau_oracle[3, ],
           tau_feasible = tau_feasible[3, ],
-          x_lims = x_lims,
-          B = B)
+          x_lims = x_lims)
 make_plot(tau_oracle = tau_oracle[4, ],
           tau_feasible = tau_feasible[4, ],
-          x_lims = x_lims,
-          B = B)
+          x_lims = x_lims)
 
 
 
