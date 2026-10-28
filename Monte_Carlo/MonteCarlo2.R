@@ -34,6 +34,8 @@ library(xtable)
 
 path <- getwd()
 
+set.seed(0451)
+
 ################################### FUNCTIONS ##################################
 
 # Generate parameter vectors b and B which match sd_B, sd_d, and rho_Bd
@@ -177,8 +179,15 @@ get_coverage <- function(results, se, tau, n){
   
 }
 
-make_plot <- function(tau_oracle, tau_feasible, x_lims){
+make_plot <- function(tau_oracle, tau_feasible, x_lims, trimming_flag = FALSE){
   
+  tau_oracle <- tau_oracle[!is.infinite(tau_oracle)]
+  tau_feasible <- tau_feasible[!is.infinite(tau_feasible)]
+  
+  if (trimming_flag == TRUE){
+    tau_oracle <- tau_oracle[as.logical((tau_oracle > 2 * x_lims[1]) * 
+                                          (tau_oracle < 2 * x_lims[2]))]
+  }
   oracle_dens <- density(tau_oracle)
   oracle_data <- data.frame(x = oracle_dens$x, y = oracle_dens$y)
   
@@ -233,9 +242,6 @@ make_plot <- function(tau_oracle, tau_feasible, x_lims){
 # Load in parameters
 switchers_calibration <- 
   readRDS(paste0(path, "/Monte_Carlo/switchers_calibration.rds"))
-no_defiers_calibration <- 
-  readRDS(paste0(path, "/Monte_Carlo/no_defiers_calibration.rds"))
-
 parameters <- switchers_calibration$parameters[[1]]
 
 for (i in 1:length(parameters)){
@@ -244,18 +250,18 @@ for (i in 1:length(parameters)){
 
 # Settings 
 K <- 3 # number of X variables
-N <- c(100, 500, 1000, 2000) # number of observations
+n <- c(100, 500, 1000, 2000) # number of observations
 pZ <- 1 / 2 # probabilty Z = 1
 B0 <- 0 # ATE
 
 # Monte Carlo settings
-runs <- 10
+runs <- 1000
 
 ############################### MONTE CARLO LOOP ###############################
 
-results <- vector(mode = "list", length = length(N))
+results <- vector(mode = "list", length = length(n))
 
-for (j in 1:length(N)){
+for (j in 1:length(n)){
   
   tsls <- rep(0, runs)
   feasible <- rep(0, runs)
@@ -268,8 +274,6 @@ for (j in 1:length(N)){
                       theta = matrix(0, nrow = 1 + (2 * K), ncol = runs))
   se <- rep(0, runs)
   
-  n <- N[j]
-  
   for (r in 1:runs){
     
     #### GENERATE DATA ####
@@ -280,13 +284,13 @@ for (j in 1:length(N)){
     d <- Bd$d
     
     # Generate sample
-    Z <- rbinom(n, 1, pZ)
+    Z <- rbinom(n[j], 1, pZ)
     
-    X <- matrix(rnorm(n * K), n, K)
+    X <- matrix(rnorm(n[j] * K), n[j], K)
     Xd <- X %*% matrix(d, nrow = K, ncol = 1)
     XB <- X %*% matrix(B, nrow = K, ncol = 1)
     
-    U <- rmvnorm(n, mean = rep(0, K), sigma = sigma)
+    U <- rmvnorm(n[j], mean = rep(0, K), sigma = sigma)
     colnames(U) <- c("U1", "U0", "V")
     U <- data.frame(U)
     
@@ -448,7 +452,7 @@ for (j in 1:length(N)){
     # Standard errors 
     data$Z_tilde <- Z_tilde
     data$s_hat <- s_hat
-    se[r] <- calc_sd(data = data, tau_feasible =  feasible[r], n = n, K = K)
+    se[r] <- calc_sd(data = data, tau_feasible =  feasible[r], n = n[j], K = K)
       
   }
   
@@ -465,9 +469,9 @@ for (j in 1:length(N)){
   
 }
 
-names(results) <- N
+names(results) <- n
 
-saveRDS(results, file = paste0(path, "/Monte_Carlo/results.rds"))
+saveRDS(results, file = paste0(path, "/Monte_Carlo/results_switchers.rds"))
 
 ############################## SUMMARY STATISTICS ##############################
 
@@ -477,112 +481,79 @@ saveRDS(results, file = paste0(path, "/Monte_Carlo/results.rds"))
 tau <- B0 + switchers_calibration$targets[[1]]$tau_U + 
   switchers_calibration$targets[[1]]$tau_B
 
-feasible_sum_stats <- matrix(0, length(N), 6)
-oracle_sum_stats <- matrix(0, length(N), 6)
+feasible_sum_stats <- matrix(0, length(n), 6)
+oracle_sum_stats <- matrix(0, length(n), 6)
+probit_sum_stats <- matrix(0, length(n), 6)
 
-for (i in 1:length(N)){
+for (i in 1:length(n)){
   
   feasible_sum_stats[i, ] <- get_stats(results = results[[i]]$feasible, tau = tau)
   oracle_sum_stats[i, ] <- get_stats(results = results[[i]]$oracle, tau = tau)
+  probit_sum_stats[i, ] <- get_stats(results = results[[i]]$probit, tau = tau)
   
 }
 
-rownames(feasible_sum_stats) <- N
+rownames(feasible_sum_stats) <- n
 colnames(feasible_sum_stats) <- 
   c("Mean", "Standard Error", "MSE", "Median", "First Quartile", "Third Quartile")
-rownames(oracle_sum_stats) <- N
+rownames(oracle_sum_stats) <- n
 colnames(oracle_sum_stats) <- 
+  c("Mean", "Standard Error", "MSE", "Median", "First Quartile", "Third Quartile")
+rownames(probit_sum_stats) <- n
+colnames(probit_sum_stats) <- 
   c("Mean", "Standard Error", "MSE", "Median", "First Quartile", "Third Quartile")
 
 xtable(feasible_sum_stats, digits = 3)
 xtable(oracle_sum_stats, digits = 3)
+xtable(probit_sum_stats, digits = 3)
 
 # Add in coverage rates 
-coverage_feasible <- matrix(0, length(N), 3)
-coverage_oracle <- matrix(0, length(N), 3)
+coverage_feasible <- matrix(0, length(n), 3)
+coverage_oracle <- matrix(0, length(n), 3)
 
 # n varies over rows, columns are coverage rates for 90%, 95% and 99% CIs
-for (i in 1:length(N)){
+for (i in 1:length(n)){
   
   coverage_feasible[i, ] <- get_coverage(results = results[[i]]$feasible,
                                          se = results[[i]]$se,
-                                         tau = tau, n = N[i])
+                                         tau = tau, n = n[i])
   coverage_oracle[i, ] <- get_coverage(results = results[[i]]$oracle,
                                        se = results[[i]]$se,
-                                       tau = tau, n = N[i])
+                                       tau = tau, n = n[i])
   
 }
 
 colnames(coverage_feasible) <- c("90", "95", "99")
-rownames(coverage_feasible) <- N
+rownames(coverage_feasible) <- n
 
 colnames(coverage_oracle) <- c("90", "95", "99")
-rownames(coverage_oracle) <- N
+rownames(coverage_oracle) <- n
 
 xtable(cbind(coverage_feasible, coverage_oracle), digits = 3)
-
-
-############################# VISUALISING RESULTS ############################## 
-
-sims <- length(N)
-
-for (i in 1:sims){
-  
-  x_lims <- rep(0, 2)
-  x_lims[1] <- quantile(results[[i]]$tsls[!is.na(results[[1]]$feasible)], 0.01)
-  x_lims[2] <- quantile(results[[i]]$tsls[!is.na(results[[1]]$feasible)], 0.99)
-  plot_points <- list()
-  
-  plot_data <- data.frame(tsls = results[[i]]$tsls, 
-                          oracle = results[[i]]$oracle, 
-                          feasible = results[[i]]$feasible,
-                          probit = results[[i]]$probit,
-                          logit = results[[i]]$logit,
-                          lpm = results[[i]]$lpm)
-  
-  
-  # plot_data %>% ggplot() + 
-  #   geom_density(aes(x = feasible, col = "feasible")) + 
-  #   geom_density(aes(x = oracle, col = "oracle")) +
-  #   geom_density(aes(x = probit, col = "probit")) + 
-  #   geom_density(aes(x = logit, col = "logit")) +
-  #   geom_density(aes(x = lpm, col = "lpm")) + 
-  #   theme_bw() +
-  #   theme(legend.title = element_blank()) +
-  #   labs(x = "Estimate", y = "")
-  
-  plot_data %>% ggplot() + 
-    geom_density(aes(x = feasible, col = "feasible")) + 
-    geom_density(aes(x = oracle, col = "oracle")) +
-    theme_bw() +
-    theme(legend.title = element_blank()) +
-    labs(x = "Estimate", y = "")
-  
-}
 
 ######################## PLOT OF SAMPLING DISTRIBUTIONS ########################
 
 # Prepare data for plotting
 
 # convert to sqrt(n) * (tau - tau^*)
-tau_feasible <- matrix(0, length(N), runs)
-tau_oracle <- matrix(0, length(N), runs)
+tau_feasible <- matrix(0, length(n), runs)
+tau_oracle <- matrix(0, length(n), runs)
 
-for (i in 1:length(N)){
+for (i in 1:length(n)){
   
-  tau_feasible[i, ] <- sqrt(N[i]) * (results[[i]]$feasible - tau)
-  tau_oracle[i, ] <- sqrt(N[i]) * (results[[i]]$oracle - tau)
-  
+  tau_feasible[i, ] <- sqrt(n[i]) * (results[[i]]$feasible - tau)
+  tau_oracle[i, ] <- sqrt(n[i]) * (results[[i]]$oracle - tau)
   
 }
 
 x_lims <- rep(0, 2)
-x_lims[1] <- quantile(c(tau_feasible, tau_oracle), 0.005, na.rm = TRUE)
-x_lims[2] <- quantile(c(tau_feasible, tau_oracle), 0.995, na.rm = TRUE)
+x_lims[1] <- quantile(c(tau_feasible, tau_oracle), 0.01, na.rm = TRUE)
+x_lims[2] <- quantile(c(tau_feasible, tau_oracle), 0.99, na.rm = TRUE)
 
 make_plot(tau_oracle = tau_oracle[1, ],
           tau_feasible = tau_feasible[1, ],
-          x_lims = x_lims)
+          x_lims = x_lims, 
+          trimming_flag = TRUE)
 make_plot(tau_oracle = tau_oracle[2, ],
           tau_feasible = tau_feasible[2, ],
           x_lims = x_lims)
