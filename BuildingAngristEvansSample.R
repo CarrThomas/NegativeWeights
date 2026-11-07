@@ -41,7 +41,9 @@
 # * HRSWORK1 hours worked in the last week (00 = N/A, top code = 99), available
 # in 1980 and 1990, but not 2000 [HRSWORK2  is the same thing coded in intervals]
 # * UHRSWORK usual hours worked in the last year (00 = N/A, top code = 99)
-
+# * FTOTINC total family income, available all years, rounded, may be top-coded
+# * INCTOT total pre-tax personal income, available all years, rounded, may be 
+#   top-coded
 
 # To match mothers and children 
 
