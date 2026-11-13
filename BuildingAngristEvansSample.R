@@ -81,3 +81,78 @@ for (i in 1:length(hholds)){
   
   
 }
+
+################################# SHOPPING LIST ################################ 
+
+# PERSON NUMBER (PERNUM) UNIQUE IDENTIFIER
+# 
+
+# OUTCOMES
+# EMPLOYMENT STATUS (EMPSTAT) 1 FOR EMPLOYED
+# HOURS WORKED (HRSWORK1)
+# USUAL HOURS WORKED (UHRSWORK)
+# WEEKS WORKED (WKSWORK1)
+# INCOME 
+# After 1990, use INCEARN which is INCWAGE + INCBUS + INCFARM in 1990 and 
+# INCWAGE + INCBUS00 from 2000 on. 
+# In 1980, use INCWAGE + INCBUS + INCFARM
+
+# TREATMENT
+# NUMBER OF CHILDREN
+
+# INSTRUMENT
+# SEX (ALL)
+
+# OTHERS
+# AGE
+# AGE IN QUARTERS
+
+# RACE DUMMIES (BLACK, WHITE, HISPANIC, OTHER)
+# COUNTRY OF BIRTH
+# YEARS OF EDUCATION? 
+
+# MOMLOC (PERSON NUMBER OF PROBABLE MOTHER)
+# THEIR CONSTRUCTION OF `MOTHER'
+
+
+#### SAMPLE DEFINITIONS ####
+
+# MOTHERS AGED 21 - 35
+# OLDEST CHILD < 18
+# MARRIED SAMPLE AND UNMARRIED SAMPLE
+# 1980 MARRIED: MARRIED AT THE TIME OF THE CENSUS, MARRIED ONLY ONCE, MARRIED
+# AT THE TIME OF THE FIRST BIRTH
+# 1990 MARRIED: ALL WOMEN MARRIED AT THE TIME OF THE CENSUS
+# ONLY 1980 HAS DATE OF FIRST MARRIAGE! 
+
+
+# VARIABLES TO DOWNLOAD
+# serial, pernum
+
+# gq
+# age, qage
+# sex, qsex
+# race
+# hispan
+# labforce
+# empstat
+# uhrswork
+# wskwork1
+# incearn (for 1980, incwage + incbus + incfarm)
+
+# chborn
+# nchild
+# educ
+
+# marst
+# momrule
+# momloc
+
+# perwt
+# hhwt
+
+# ADDITIONAL
+# nativity
+# bpl, qbpl (joint flag for nativity and birthplace quality)
+# yrimmig
+
