@@ -151,7 +151,6 @@ for (i in 1:length(hholds)){
 # perwt
 # hhwt
 
-# ADDITIONAL
 # nativity
 # bpl, qbpl (joint flag for nativity and birthplace quality)
 # yrimmig

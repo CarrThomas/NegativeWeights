@@ -8,4 +8,8 @@
 rm(list = ls())
 gc()
 
+library(ipumsr)
+
 path <- getwd()
+
+data <- read.csv(paste0(path,"/Applications/ipums1980.csv"))
