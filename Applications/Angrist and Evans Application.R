@@ -5,6 +5,7 @@
 
 library(ivreg)
 library(xtable)
+library(haven)
 
 rm(list = ls())
 
