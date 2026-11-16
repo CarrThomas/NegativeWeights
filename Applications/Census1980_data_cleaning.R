@@ -1,6 +1,7 @@
 ################################# FRONT MATTER #################################
 
 # Cleans 1980 census data for the Angrist and Evans application
+# Cleaning process follows the replication files of Aaranson et al (2020)
 
 # Input should be the 1980 5% sample.
 # I use an extract that is cut down to households with women aged between 21 and
@@ -441,14 +442,14 @@ saveRDS(object = mothers, file = paste0(path, "/Applications/mom_data.rds"))
 # mothers <- readRDS(file = paste0(path, "/Applications/mom_data.rds"))
 
 # drop unused columns
-keep <- c("nchild", "age", "birthqtr", "marst", "marrno", "agemarr", "chborn", 
-          "race", "hispan", "bpl", "yrimmig", "educ", "educd", "wkswork1", 
-          "uhrswork", "qagemarr", "qchborn", "qmarrno", "qmarst","qbirthmo", 
-          "qmarrqtr", "qeduc", "qempstat", "qocc", "inctot_bot_code", 
-          "inctot_top_code", "inctot", "qinctot", "worked", "flag_age_sex", 
-          "flag_race", "flag_imm", "kid_count", "age.1", "birthqtr.1", 
-          "same_sex", "flag_18_plus", "multi2nd", "triplets", "flag_qkids", 
-          "sp_bpl", "sp_yrimmg", "sp_flag")         
+keep <- c("nchild", "age", "birthqtr", "marst", "marrno", "agemarr", "chborn",
+          "race", "hispan", "bpl", "yrimmig", "educ", "educd", "wkswork1",
+          "uhrswork", "qagemarr", "qchborn", "qmarrno", "qmarst","qbirthmo",
+          "qmarrqtr", "qeduc", "qempstat", "qocc", "inctot_bot_code",
+          "inctot_top_code", "inctot", "qinctot", "worked", "flag_age_sex",
+          "flag_race", "flag_imm", "kid_count", "age.1", "birthqtr.1",
+          "same_sex", "flag_18_plus", "multi2nd", "triplets", "flag_qkids",
+          "sp_bpl", "sp_yrimmg", "sp_flag")
 
 mothers <- mothers[names(mothers) %in% keep]
 
@@ -456,7 +457,7 @@ gc()
 
 # drop iffy observations
 mothers <- mothers[mothers$nchild == (mothers$chborn - 1), ]
-# number of children in household should equal children born 
+# number of children in household should equal children born
 # (N.B. chborn is 0 for NA, 1 for 0, 2 for 1 etc...)
 mothers <- mothers[mothers$nchild == mothers$kid_count, ]
 # reported number of children should equal number actually in sample
@@ -483,15 +484,15 @@ mothers <- mutate(mothers, flag = qagemarr +
 mothers <- dplyr::filter(mothers, flag == 0)
 
 # drop all the quality variables
-mothers <- 
-  mothers[!(names(mothers) %in% c("flag", 
-                                  "qagemarr", 
-                                  "qchborn", 
+mothers <-
+  mothers[!(names(mothers) %in% c("flag",
+                                  "qagemarr",
+                                  "qchborn",
                                   "qmarst",
-                                  "flag_age_sex", 
-                                  "flag_race", 
-                                  "flag_imm", 
-                                  "flag_qkids", 
+                                  "flag_age_sex",
+                                  "flag_race",
+                                  "flag_imm",
+                                  "flag_qkids",
                                   "sp_flag"))]
 
 # drop all triplet first births and all twin second births
@@ -500,7 +501,7 @@ mothers <- dplyr::filter(mothers, triplets == 0, multi2nd == 0)
 # define the treatment
 mothers$morekids <- mothers$nchild > 2
 
-mothers <- 
+mothers <-
   mothers[!(names(mothers) %in% c("marst", "marrno", "multi2nd",
                                   "triplets", "flag_18_plus", "qmarrno",
                                   "qbirthmo", "qmarrqtr", "nchild", "chborn",
@@ -509,12 +510,12 @@ mothers <-
 # work out age at first birth
 
 # recode birthqtr.1 (redefined it earlier so that kids would be sorted properly)
-mothers$birthqtr.1 <- recode_values(mothers$birthqtr.1, 
+mothers$birthqtr.1 <- recode_values(mothers$birthqtr.1,
                                     from = c(1, 2, 3, 4),
                                     to = c(1, 4, 3, 2))
 
 # mothers and childs age in quarters:
-# 4 * age in years plus 
+# 4 * age in years plus
 # 0 if born in quarter 1
 # 3 if born in quarter 2
 # 2 if born in quarter 3
@@ -533,7 +534,7 @@ mothers <- mutate(mothers, age_quarters =  age * 4 + 5 - birthqtr)
 mothers <- mutate(mothers, age_quarters.1 = age.1 * 4 + 5 - birthqtr.1)
 mothers <- mutate(mothers, age_fst = floor((age_quarters - age_quarters.1) / 4))
 
-# View(mothers[c("age", "birthqtr", "age_quarters", 
+# View(mothers[c("age", "birthqtr", "age_quarters",
 #                "age.1", "birthqtr.1", "age_quarters.1",
 #                "age_fst")])
 
@@ -541,8 +542,8 @@ mothers <- mutate(mothers, age_fst = floor((age_quarters - age_quarters.1) / 4))
 mothers <- dplyr::filter(mothers, age_fst >= agemarr)
 
 # drop extra variables
-mothers <- dplyr::select(mothers, 
-                         -starts_with("birthqtr"), 
+mothers <- dplyr::select(mothers,
+                         -starts_with("birthqtr"),
                          -starts_with("age_quarters"),
                          -age.1,
                          -agemarr)
@@ -564,8 +565,8 @@ mothers <- dplyr::select(mothers, - yrimmig, - sp_yrimmg)
 # construct years of education from educd (detailed education)
 mothers <- mutate(mothers, yr_ed = educd)
 mothers$yr_ed <- recode_values(mothers$yr_ed,
-                               from = c(2, 11, 12, 14, 15, 16, 17, 22, 23, 25, 
-                                        26, 30, 40, 50, 60, 65, 70, 80, 90, 
+                               from = c(2, 11, 12, 14, 15, 16, 17, 22, 23, 25,
+                                        26, 30, 40, 50, 60, 65, 70, 80, 90,
                                         100, 110, 111, 112, 113),
                                to = c(0,0,0, 1:12, 12, 13:20))
 # replace with NA if qeduc > 0
@@ -578,4 +579,45 @@ mothers$inctot <- mothers$inctot * 2.099173554
 mothers$inctot[mothers$qinctot > 0] <- NA
 mothers <- dplyr::select(mothers, -qinctot)
 
-save(mothers, file =  paste0(path, "/Applications/1980_data.rds"))
+saveRDS(mothers, file =  paste0(path, "/Applications/1980_data.rds"))
+
+
+################################################################################
+# 
+# # Angrist and Evans replication package code
+# 
+# # race indicators for mom 
+# data$blackm <- data$racem == "02"
+# data$hispm <- data$racem == "12"
+# data$whitem <- data$racem == "01"
+# data$othracem <- 1 - data$blackm - data$hispm - data$whitem
+# 
+# # ages of mom when 1st kid was born
+# data$agem <- as.integer(data$agem)
+# data$ageqm <- 4 * (80 - data$yobm) - data$qtrbthm - 1
+# data$agefstm <- floor((data$ageqm - data$ageqk) / 4)
+# 
+# data$aged <- as.integer(data$aged)
+# data$yobd <- 79 - data$aged + (data$qtrbthd == "0")
+# data$qtrbthd <- as.integer(data$qtrbthd)
+# data$ageqd <- 4 * (80 - data$yobd) - data$qtrbthd
+# data$agefstd <- floor((data$ageqd - data$ageqk) / 4)
+# 
+# # outcome variables 
+# data$faminc1 <- as.numeric(data$faminc)
+# data$faminc1 <- data$faminc1 * 2.099173554
+# # data$Y <- log(pmax(data$faminc1 , 1))
+# data$weeksm1 <- as.numeric(data$weeksm)
+# data$workedm <- as.numeric(data$weeksm1 > 0)
+# data$hourswm <- as.numeric(data$hoursm)
+# data$incomem <- as.numeric(data$income1m) + pmax(0, as.numeric(data$income2m))
+# data$incomem <- data$incomem * 2.099173554
+# 
+# # indicator for whether the observation belongs in the married sample
+# data$msample <- data$aged != "" & data$timesmar == "1" & data$marital == "0" & 
+#   data$illegit == 0 & data$agefstd >= 15 & data$agefstm >= 15 
+# 
+# data <- subset(data, agem >= 21 & agem <= 35 & kidcount >= 2 & 
+#                  ageq2nd > 4 & agefstm >= 15 & asex == 0 & 
+#                  aage == 0 & aqtrbrth == 0 & asex2nd == 0 & 
+#                  aage2nd == 0 & msample == 1)

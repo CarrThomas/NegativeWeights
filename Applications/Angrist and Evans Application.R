@@ -1,432 +1,51 @@
 ################################# FRONT MATTER #################################
 
 # Implements the estimator with the data from Angrist and Evans (1998)
-# Largely follows the replication files of Aaranson et al (2020)
 
 library(ivreg)
 library(xtable)
-library(haven)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
 
 rm(list = ls())
 
 path <- getwd()
-
-################################ DATA WRANGLING ################################
-
-#     ** inflation multiplier for post-1940 data (to 1990 dollars)
-#     local infl1980 = 1.59
-#     local infl1990 = 1
-#     local infl2000 = 0.76
-#     local infl2010 = 0.60
-#     
-#   # Data Cleaning
-#
-# 	** flag for group quarters
-# 	gen fgq = gq!=1
-# 
-# 	** flags for age and gender
-# 	gen fage = age==.|age<0|qage!=0
-# 	gen fsex = (sex!=1&sex!=2)|qsex!=0
-# 
-#   ** Houehold flags (Any Imputation, GQ, and Inmate Relationships)
-#   gen fhh_t = fage==1|fsex==1|fgq==1
-# 
-# 	** Reprocess race
-# 	gen black = race==2
-# 	gen other_race = race>2
-# 
-# 	** Process birth quarter/month. For US, quarter of birth is avilable for
-# 		* 1960-1980 and ACS Samples (2010). For month, this is avilable for 1900.
-# 		* The variables are available for other years, but these only provide
-# 		* data for individuals with age code of 0 (<1 year old).
-# 	gen bm = .
-# 	if (`yr'>=1960 & `yr'<=1980 | `yr'>2000) {
-# 		replace bm = birthqtr if birthqtr!=9
-# 	}
-# 
-# ** labor force participation (all years)
-# replace labforce = . if labforce!=1 & labforce!=2
-# replace labforce = labforce==2 if labforce!=.
-# 
-# 
-# 	** employed (standard employment status, only after 1960)
-# 	cap gen empstat = . // generate if missing
-# 	replace empstat = . if empstat!=1 & empstat!=2 & empstat !=3
-# 	replace empstat = empstat==1 if empstat != .
-# 
-# 	** grandparents
-# 	gen grandma = momloc!=0 if momloc!=.
-# 	gen grandpa = poploc!=0 if poploc!=.
-# 
-# 	** children ever born
-# 	cap gen chborn = .
-# 	replace chborn = . if chborn >= 98
-# 	replace chborn = . if chborn==0 // first code is missng, rest are off by 1
-# 	replace chborn = chborn - 1
-# 
-# 	** flag for if number of children ever born not equal to number of children
-# 	gen fchborn = chborn!=nchild if chborn!=.
-# 	replace fchborn = 0 if fchborn==1 & chborn > 9 & nchild==9 // nchild topcoded at 9
-# 
-# 	** code the education variable
-# 	gen education = .
-# 	if `yr' >= 1940 & `yr' <= 1980 {
-# 		replace education = 0 if educd == 2 | educd == 12
-# 		replace education = 1 if educd == 14
-# 		replace education = 2 if educd == 15
-# 		replace education = 3 if educd == 16
-# 		replace education = 4 if educd == 17
-# 		replace education = 5 if educd == 22
-# 		replace education = 6 if educd == 23
-# 		replace education = 7 if educd == 25
-# 		replace education = 8 if educd == 26
-# 		replace education = 9 if educd == 30
-# 		replace education = 10 if educd == 40
-# 		replace education = 11 if educd == 50
-# 		replace education = 12 if educd == 60
-# 		replace education = 13 if educd == 70
-# 		replace education = 14 if educd == 80
-# 		replace education = 15 if educd == 90
-# 		replace education = 16 if educd == 100
-# 		replace education = 17 if educd == 110
-# 		replace education = 18 if educd == 111
-# 		replace education = 19 if educd == 112
-# 		replace education = 21 if educd == 113
-# 	}
-# 	else if `yr' >= 1990 {
-# 	  replace education = 0 if educd == 2 | educd == 12 | educd == 11
-# 	  replace education = 2 if educd == 13
-# 	  replace education = 2 if educd == 10
-# 	  replace education = 6 if educd == 20
-# 	  replace education = 5.5 if educd == 21
-# 	  replace education = 7.5 if educd == 24
-# 	  replace education = 9 if educd == 30
-# 	  replace education = 10 if educd == 40
-# 	  replace education = 11 if educd == 50
-# 	  replace education = 11.5 if educd == 61
-# 	  replace education = 12 if educd == 62
-# 	  replace education = 12.5 if educd == 65
-# 	  replace education = 13 if educd == 71
-# 	  replace education = 14 if educd == 82 | educd == 83 | educd == 81
-# 	  replace education = 16 if educd == 101
-# 	  replace education = 18 if educd == 114 | educd == 115
-# 	  replace education = 21 if educd == 116
-# 	}
-# 	
-# 	** married
-# 		gen married = marst==1 if marst>=1&marst<=6
-# 		gen evermarried = married==0 & marst!=6 if marst!=. & marst!=9
-# 		gen marr_divorce = marst==4 if marst!=9 & marst!=.
-# 		gen marr_separate = marst==3 if marst!=9 & marst!=.
-# 		gen marr_single = marst==6 if marst!=9 & marst!=.
-# 		gen marr_widow = marst==5 if marst!=9 & marst!=.
-# 
-# 	** clean wage and income data
-# 	  sum incwage
-# 	  replace incwage = . if incwage<=0
-# 	  replace incwage = . if incwage>=999998
-# 	  replace incwage = incwage * `infl`yr''
-# 	  
-# 	  ** weeks worked
-# 	  gen weeks = .
-# 	  cap replace weeks = wkswork1
-# 	  
-# 	  ** hours
-# 	  gen hours = .
-# 	  cap {
-# 	    if (`yr'==2010|`yr'==2000) {
-# 				replace hours = uhrswork
-# 			}
-# 			else {
-# 				replace hours = hrswork1
-# 			}
-# 		}
-# 
-# 		** hourly wages
-# 		gen wage = incwage / (hours*weeks)
-# 		replace wage = . if wage==0
-# 		_pctile wage, p(1 99)
-# 		replace wage = r(r1) if wage<=r(r1) & wage != .
-# 		replace wage = r(r2) if wage>=r(r2) & wage != .
-# 	}
-# 	else {
-# 		gen incwage = .
-# 		gen weeks = .
-# 		gen hours = .
-# 		gen wage = .
-# 	}
-# 
-# /* Weights */
-#   ** modification to the weights
-# replace perwt = . if perwt <=0
-# replace hhwt = . if hhwt <=0
-# 
-# 
-# /* Household Data */
-#   sort sample statecode serial pernum
-# 
-# ** number of older women, 16+
-#   gen t_var = sex==2 & age > 15
-# by sample statecode serial: egen nfemale_p15 = sum(t_var)
-# drop t_var
-# 
-# ** number of older women, 16+
-#   gen t_var = sex==2 & age > 15 & labforce==1
-# by sample statecode serial: egen nfemale_lab_p15 = sum(t_var)
-# drop t_var
-# 
-# ** number of older women, 36+
-#   gen t_var = sex==2 & age >= 36
-# by sample statecode serial: egen nfemale_p36 = sum(t_var)
-# drop t_var
-# 
-# ** number of older women in labor force, 36+
-#   gen t_var = sex==2 & age >= 36 & labforce==1
-# by sample statecode serial: egen nfemale_lab_p36 = sum(t_var)
-# drop t_var
-# 
-# ** indicator for multigenerational household
-# cap drop multgen
-# gen	t_var = nchild>=1 & (grandpa==1|grandma==1)
-# by sample statecode serial : egen multgen = max(t_var)
-# drop t_var
-# 
-# ** flag for household data quality
-# by sample statecode serial : egen fhh = max(fhh_t)
-# 
-# 
-# /* Variables to Keep */
-#   ** be sure this variable is available
-# cap gen momrule = 0
-# cap gen poprule = 0
-# 
-# ** these are variables we keep. this step forces them to exist in all samples
-# keep source sample country year statecode serial pernum perwt hhwt age sex ///
-#   labforce labforceb manuf boarder empstat occupied workedyr wage_worker occagg occprofess ///
-#   hours weeks wage incwage education occscore attend_school ///
-#   grandma grandpa multgen bpl moved urban_cat momrule poprule labforceb boarder ///
-#   momloc poploc sploc marst married evermarried occupation ///
-#   fgq fage fsex fhh fchborn chborn nchild bm ///
-#   black other_race south deep_south nfemale_* ///
-#   marr_divorce marr_separate marr_single marr_widow
-# qui compress
-
-# /* Extract Mothers */
-# use if age>=16 & age<=45 & sex==2 & nchild!=0 ///
-# 
-# 
-# 
-# 
-# /* Extact Children */
-#   ** load the data
-# clear
-# use if momloc!=0 using data/temp_`f'_data
-# 
-# ** sort into family groups, then descending by age. This will put
-# 	* the oldest kids at the top. Save this ordering
-# gsort sample statecode serial momloc -age pernum
-# by sample statecode serial momloc: gen kid_idx = _n
-# 
-# ** store how many kids there are, total, for a given mother, but only
-# 	* keep around the first three for the reshape to save time
-# keep sample statecode serial kid_idx momloc sex age fage fsex ///
-#      attend_school bm momrule
-# sort sample statecode serial momloc
-# by sample statecode serial momloc: egen num_kids_found = max(kid_idx)
-# by sample statecode serial momloc: egen youngest_age = min(age)
-# drop if kid_idx>6
-# 
-# ** reshape so the age and gender of each kid is its own variable
-# reshape wide ///
-# sex age fage fsex youngest_age attend_school bm momrule, ///
-# i(sample statecode serial momloc) j(kid_idx)
-# rename youngest_age1 youngest_age
-# drop youngest_age2 youngest_age3 youngest_age4 ///
-# youngest_age5 youngest_age6
-# 
-# ** merge to moms
-# rename momloc pernum
-# sort sample statecode serial pernum
-# merge 1:1 sample statecode serial pernum using data/moms_`f', ///
-#   keep(2 3)
-# replace num_kids_found = 0 if _merge==2
-# drop _merge
-# 
-# ** Now we can compare the reported number of children with the number
-# * of children  who were observed and drop if they don't match.
-# 	* NAPP Top-codes nchild at 9.
-# if ("`f'"=="napp" ) {
-# 	keep if  ///
-# 	nchild==num_kids_found | (num_kids_found > 9 & nchild==9)
-# }
-# else {
-# 	keep if nchild==num_kids_found
-# }
-# 
-# 
-# /* Additional Variables */
-# **Find age at first birth, spouse's age at first birth.
-# 	* Will drop mothers that are unusually long
-# 	* before analysis.
-# gen age_first_birth = age - age1
-# gen spouse_age_first_birth = spouse_age - age1
-# 
-# **Create indicators for whether a woman's first two children are of
-# 	* the same sex
-# gen same_sex = (sex1==sex2) if nchild>=2
-# gen two_boys = (sex1==1 & sex2==1) if nchild>=2
-# gen two_girls = (sex1==2 & sex2==2) if nchild>=2
-# 
-# ** Indicators for twins and "real" twins for each child. Only
-# 	* populate month/quarter of birth twins if we
-# 	* can observe this.
-# forval i=1/5 {
-# 	local j = `i' + 1
-# 	gen twins`i' = age`i'==age`j' if nchild>=`i'
-# 	gen rtwins`i' = twins`i'==1 & bm`i'==bm`j' ///
-# 	if nchild>=`i' & bm`i'!=.
-# }
-# 
-# ** Baseline Treatment
-# gen fertility = nchild >=3 if nchild >= 2
-# 
-# ** Count number of twins
-# foreach v in twins rtwins {
-# 	gen n`v' = 0
-# 	forval i=1/6 {
-# 		local previ = `i' - 1
-# 		if (`i'==1) {
-# 			replace n`v'=n`v' + 1 if `v'1==1
-# 		}
-# 		else if (`i'==6) {
-# 			replace n`v'=n`v' + 1 if `v'5==1
-# 		}
-# 		else {
-# 			replace n`v'=n`v' + 1 if `v'`i'==1
-# 			replace n`v'=n`v' + 1 if ///
-# 			`v'`i'==0 & `v'`previ'==1
-# 		}
-# 	}
-# }
-# replace nrtwins = . if bm1==.
-# 
-# ** flag for family with triplets
-# forval i = 1/4 {
-# 	local i1 = `i' + 1
-# 	local i2 = `i' + 2
-# 	gen ftrip`i' = age`i'==age`i1' & age`i1'==age`i2'
-# }
-# gen fmult_twin = ntwins>2
-# 
-# ** indicator for baseline sample. Useful for testing
-# gen _samp = age>=21 & age<=35 & nchild>=2 & fage1==0 & fage2==0 & ///
-# fsex1==0 & fsex2==0 & fgq==0 & ftrip1==0 & fage==0 & fsex==0 & ///
-# labforce!=. & hhwt!=.
-# replace _samp = 0 if age_first_birth < 15 | age1 > 17
-# replace _samp = 0 if nchild>=3 & (fage3!=0|fsex3!=0)
-# 
-# 
-# 
-# /* Finalize Data */
-# ** keep these variables
-# keep sample source statecode year serial pernum _samp ///
-# perwt hhwt fertility nchild age age_first_birth youngest_age ///
-# same_sex two_boys two_girls black other_race workedyr education ///
-# empstat occupied labforce spouse spouse_* occagg chborn fchborn ///
-# urban_cat twins* rtwins* bm* age1 age2 age3 age4 age5 age6 ///
-# sex1 sex2 sex3 sex4 sex5 sex6 fage* fsex* marst married momrule* ///
-# attend_school1 attend_school2 attend_school3 attend_school4 ///
-# attend_school5 attend_school6 nchild fgq fhh fmult_twin ftrip* ///
-# incwage hours weeks wage wage_worker nfemale_* ///
-# labforceb manuf boarder occprofess occupation grandma grandpa ///
-# multgen evermarried south deep_south occscore bpl moved ///
-# oldersister12 oldersister15 ntwins nrtwins marr_divorce ///
-# marr_separate marr_single marr_widow
-# 
-# ** merge with sample aggregates if we are working with full
-# 	* samples. If we are using full country states, we will
-# 	* merge in later to save time.
-# merge m:1 sample statecode using ///
-# 	data/samp_stat/`f'_summary, ///
-#   nogen assert(2 3) keep(3)
-# 
-
-
-
-####  Data wrangling ####
-
-data <-  read_sas(paste(path, "/AngEv98/m_d_806.sas7bdat", sep = ""))
-names(data) <- tolower(names(data))
-
-# flag for first child born before marriage
-data$qtrmar <- as.integer(data$qtrmar)
-data$agemar <- as.integer(data$agemar)
-data$qtrbthm <- as.integer(data$qtrbthm)
-data$qtrbkid <- as.integer(data$qtrbkid)
-data$illegit <- 0
-data_0 <- subset(data, qtrmar == 0)
-data <- subset(data, qtrmar != 0)
-data$qtrmar <- data$qtrmar - 1
-yom <- data$yobm + data$agemar + (data$qtrbthm > data$qtrmar)
-dom_q <- yom + (data$qtrmar / 4)
-do1b_q <- data$yobk + (data$qtrbkid / 4)
-data$illegit <- dom_q > do1b_q
-data <- rbind(data_0, data)
-rm(data_0, yom, dom_q, do1b_q)
-
-# sexes of the first two kids
-data$Z <- data$sexk == data$sex2nd
-data$D <- data$kidcount > 2
-
-# race indicators for mom 
-data$blackm <- data$racem == "02"
-data$hispm <- data$racem == "12"
-data$whitem <- data$racem == "01"
-data$othracem <- 1 - data$blackm - data$hispm - data$whitem
-
-# ages of mom when 1st kid was born
-data$agem <- as.integer(data$agem)
-data$ageqm <- 4 * (80 - data$yobm) - data$qtrbthm - 1
-data$agefstm <- floor((data$ageqm - data$ageqk) / 4)
-
-data$aged <- as.integer(data$aged)
-data$yobd <- 79 - data$aged + (data$qtrbthd == "0")
-data$qtrbthd <- as.integer(data$qtrbthd)
-data$ageqd <- 4 * (80 - data$yobd) - data$qtrbthd
-data$agefstd <- floor((data$ageqd - data$ageqk) / 4)
-
-# outcome variables 
-data$faminc1 <- as.numeric(data$faminc)
-data$faminc1 <- data$faminc1 * 2.099173554
-# data$Y <- log(pmax(data$faminc1 , 1))
-data$weeksm1 <- as.numeric(data$weeksm)
-data$workedm <- as.numeric(data$weeksm1 > 0)
-data$hourswm <- as.numeric(data$hoursm)
-data$incomem <- as.numeric(data$income1m) + pmax(0, as.numeric(data$income2m))
-data$incomem <- data$incomem * 2.099173554
-
-# indicator for whether the observation belongs in the married sample
-data$msample <- data$aged != "" & data$timesmar == "1" & data$marital == "0" & 
-  data$illegit == 0 & data$agefstd >= 15 & data$agefstm >= 15 
-
-data <- subset(data, agem >= 21 & agem <= 35 & kidcount >= 2 & 
-                 ageq2nd > 4 & agefstm >= 15 & asex == 0 & 
-                 aage == 0 & aqtrbrth == 0 & asex2nd == 0 & 
-                 aage2nd == 0 & msample == 1)
-
-Ylist <- c("weeksm1", "workedm", "hourswm", "incomem")
-varlist <- c("blackm", "hispm", "othracem", "agem", "agefstm")
-
-data <- data[names(data) %in% c("D", "Z", Ylist, varlist)]
-
-data$Z <- as.numeric(data$Z)
-data$D <- as.numeric(data$D)
-
-gc()
+path <- paste0(path, "/Applications/")
 
 ################################### FUNCTIONS ##################################
 
-calc_sd <- function(data, Z_tilde, tau_feasible, s_hat, X_names, Y_name){
+# Function to calculate the fitted values of the sign function
+# - theta_hat is estimated parameters (have names)
+# - data is the data (including interactions)
+get_s_hat <- function(theta_hat, data){
+  
+  relevant <- names(theta_hat)[grep("Z", names(theta_hat))]
+  theta_hat <- theta_hat[relevant]
+  theta_hat <- theta_hat[!is.na(theta_hat)]
+  
+  relevant <- names(theta_hat)[2:length(theta_hat)]
+  relevant <- gsub("Z_", "", relevant)
+  k <- length(relevant)
+  
+  return(sign(theta_hat["Z"] + as.matrix(data[relevant]) %*% 
+                matrix(theta_hat[1 + 1:k], k, 1)))
+  
+}
+
+S_theta <- function(theta, data, varnames){
+  
+  theta <- theta / sqrt(sum(theta ^ 2))
+  index <- as.matrix(data[varnames]) %*% theta
+  D_sort <- data$D[order(index)] 
+  tally <- cumsum(1 - D_sort)
+  val <- sum(tally[as.logical(D_sort)])
+  
+  return(val)
+  
+}
+
+calc_sd <- function(data, Z_tilde, tau_feasible, s_hat, X_names, Yname){
   
   # returns the estimate of the asymptotic SD
   
@@ -435,14 +54,18 @@ calc_sd <- function(data, Z_tilde, tau_feasible, s_hat, X_names, Y_name){
   # tau_feasible: the estimate (from the feasible estimator)
   # s_hat: the estimated sign function
   # X_names: list of covariate names
+
+  # "errors"
+  s_hat <- s_hat[!is.na(data[[Yname]])]
   
+  e_Z <- Z_tilde
+  e_Z <- e_Z[!is.na(data[[Yname]])]
+  
+  data <- data[!is.na(data[[Yname]]), ]
+  e_Y <- data[[Yname]] - data$D * tau_feasible
+
   n <- nrow(data)
   K <- length(X_names)
-  
-  # "errors"
-  e_Y <- data[[Y_name]] - data$D * tau_feasible
-  e_Z <- Z_tilde
-  
   X <- data[names(data) %in% X_names]
   
   # sigma_X = E_n[XX^T]
@@ -484,38 +107,78 @@ calc_sd <- function(data, Z_tilde, tau_feasible, s_hat, X_names, Y_name){
   
 }
 
-get_s_hat <- function(theta_hat, data){
-  
-  relevant <- names(theta_hat)[grep("Z", names(theta_hat))]
-  theta_hat <- theta_hat[relevant]
-  
-  relevant <- relevant[2:length(relevant)]
-  relevant <- gsub("Z_", "", relevant)
-  k <- length(relevant)
-  
-  return(sign(theta_hat["Z"] + as.matrix(data[relevant]) %*% 
-                matrix(theta_hat[1 + 1:k], k, 1)))
-  
-}
+################################## PREPARATION #################################
+
+# Load in cleaned and prepared data
+data <- readRDS(file = paste0(path, "1980_data.rds"))
+
+# Drop observations with missing years of education
+data <- dplyr::filter(data, is.na(yr_ed) == F)
+
+data <- dplyr::rename(data, Z = same_sex, D = morekids)
+
+Ylist <- c("wkswork1", "worked", "uhrswork", "inctot")
+Xlist <- c("black", "oth", "hispan", "bpl", "sp_bpl", "age", "age_fst", "yr_ed")
+
+data$Z <- as.numeric(data$Z)
+data$D <- as.numeric(data$D)
+
+############################## SUMMARY STATISTICS ##############################
+
+# immigrant mother, US father
+sum((data$bpl != 0) * (data$sp_bpl == 0))
+# US mother, immigrant father
+sum((data$bpl == 0) * (data$sp_bpl != 0))
+# US couple
+sum((data$bpl == 0) * (data$sp_bpl == 0))
+# immigrant couple
+sum((data$bpl != 0) * (data$sp_bpl != 0))
+
+# counts for each birthplace
+vals <- length(unique(data$bpl))
+data <- data[order(data$bpl), ]
+
+bpl_table <- matrix(0, nrow = vals, ncol = 2)
+bpl_table[, 1] <- sort(unique(data$bpl))
+bpl_table[, 2] <- tabulate(as.factor(data$bpl))
+
+vals <- length(unique(data$sp_bpl))
+data <- data[order(data$sp_bpl), ]
+
+sp_bpl_table <- matrix(0, nrow = vals, ncol = 2)
+sp_bpl_table[, 1] <- sort(unique(data$sp_bpl))
+sp_bpl_table[, 2] <- tabulate(as.factor(data$sp_bpl))
+
+# drop any bpl or spl_bpl that occurs less than 10 times (arbitrary)
+bpl_drop <- bpl_table[, 1][bpl_table[, 2] <= 10]
+sp_bpl_drop <- sp_bpl_table[, 1][sp_bpl_table[, 2] <= 10]
+
+data <- data[!(data$bpl %in% bpl_drop), ]
+data <- data[!(data$sp_bpl %in% sp_bpl_drop), ]
+
 
 ##################################### TSLS #####################################
 
-tsls <- vector(mode = "list", length = 5)
+store <- data
+data$bpl <- as.factor(data$bpl)
+data$sp_bpl <- as.factor(data$sp_bpl)
+
+tsls <- vector(mode = "list", length = 4)
 
 for (i in 1:4){
   
   tsls_formula <-  as.formula(
     paste0(Ylist[i], " ~ D + ", 
-           paste(varlist, collapse = " + "),
+           paste(Xlist, collapse = " + "),
            "| Z + ",
-           paste(varlist, collapse = " + ")))
+           paste(Xlist, collapse = " + ")))
   tsls[[i]] <- ivreg(formula = tsls_formula, 
                      data = data)
   
 }
 
 # make a table
-tsls_table <- matrix(0, 2, 4)
+tsls_table <- matrix(0, 3, 4)
 
 for (i in 1:4){
   
@@ -523,86 +186,381 @@ for (i in 1:4){
   temp <- temp[grep("D", rownames(temp)), ]
   tsls_table[1, i] <- temp["Estimate"]
   tsls_table[2, i] <- temp["Std. Error"]
+  tsls_table[3, i] <- tsls[[i]]$df.residual
   
 }
 
-rownames(tsls_table) <- c("Estimate", "Std. Error")
+rownames(tsls_table) <- c("Estimate", "Std. Error", "n")
+colnames(tsls_table) <- Ylist
 xtable(tsls_table, digits = 3)
 
-################################### REORDERED ##################################
+########################### REORDERED IV PREPARATIONS ##########################
 
 # generate the orthogonalised instrument
 Z_hat <- 
   lm(as.formula(
     paste0("Z ~ ", 
-           paste(varlist, collapse = " + "))),
+           paste(Xlist, collapse = " + "))),
     data = data)$fitted.values
 Z_tilde <- data$Z - Z_hat
+rm(Z_hat)
+
+# go back to the non-factor bpl and sp_bpl
+rm(data)
+data <- store
+
+# generate fixed effects
+n <- nrow(data)
+bpl_vals <- sort(unique(data$bpl))
+n_vals <- length(bpl_vals)
+bpl_fe <- matrix(0, n, n_vals)
+colnames(bpl_fe) <- paste0("bpl_", bpl_vals)
+
+for (i in 1:n_vals){
+  
+  bpl_fe[, i] <- as.numeric(data$bpl == bpl_vals[i])
+  
+}
+
+bpl_fe <- data.frame(bpl_fe)
+
+sp_bpl_vals <- sort(unique(data$sp_bpl))
+n_vals <- length(sp_bpl_vals)
+sp_bpl_fe <- matrix(0, n, n_vals)
+colnames(sp_bpl_fe) <- paste0("sp_bpl_", sp_bpl_vals)
+
+for (i in 1:n_vals){
+  
+  sp_bpl_fe[, i] <- as.numeric(data$sp_bpl == sp_bpl_vals[i])
+  
+}
+
+sp_bpl_fe <- data.frame(sp_bpl_fe)
+
+data <- cbind(data, bpl_fe, sp_bpl_fe)
+Xlist <- Xlist[grep("bpl", Xlist, invert = T)]
+Xlist <- c(Xlist, names(bpl_fe), names(sp_bpl_fe))
 
 interactions <- matrix(
   unlist(
-    sapply(varlist, 
+    sapply(Xlist, 
            function(X_name, data){return(data["Z"] * data[X_name])},
            data = data)),
   nrow = nrow(data), 
-  ncol = length(varlist))
-colnames(interactions) <- paste0("Z_", varlist)
+  ncol = length(Xlist))
+colnames(interactions) <- paste0("Z_", Xlist)
 interactions <- data.frame(interactions)
 data <- cbind(data, interactions)
 
-probit_results <- matrix(0, 2, 4)
-lpm_results <- matrix(0, 2, 4)
+############################ REORDERED IV ESTIMATION ###########################
+
+# We consider the following variations
+# 1) correction with probit
+# 2) correction with logit estimates
+# 3) correction with lpm estimates
+# 4) correction with MRC estimates
+
+# Each version is estimated with each combination of control variables
+# From the `first stage' (estimation of the sign function), we report
+# 1) Proportions of observations where s(X) is positive
+# From the `second stage' (the corrected TSLS estimator), we report
+# 1) The estimated LATE
+# 2) Standard errors
+
+# storage for results
+probit <- vector(mode = "list", length = 4)
+logit <- vector(mode = "list", length = 4)
+lpm <- vector(mode = "list", length = 4)
+mrc <- vector(mode = "list", length = 4)
+
+# As the conditioning covariates stay fixed, we need only run the first stage
+# once!!!
+
+#### PROBIT ####
+
+# coefficient estimates
+probit_est <- glm(as.formula(
+  paste0("D ~ Z + ", 
+         paste(Xlist, collapse = " + "),
+         " + ",
+         paste(names(interactions), collapse = " + "))),
+  family = binomial(link = "probit"),
+  data = data)
+
+# calculate S_hat 
+probit_s_hat <- get_s_hat(probit_est$coefficients, data)
+
+#### LOGIT ####
+
+# coefficient estimates
+logit_est <- glm(as.formula(
+  paste0("D ~ Z + ", 
+         paste(Xlist, collapse = " + "),
+         " + ",
+         paste(names(interactions), collapse = " + "))),
+  family = binomial(link = "logit"),
+  data = data)
+
+# calculate S_hat 
+logit_s_hat <- get_s_hat(logit_est$coefficients, data)
+
+#### LPM ####
+
+# coefficient estimates
+lpm_est <- lm(as.formula(
+  paste0("D ~ Z + ", 
+         paste(Xlist, collapse = " + "),
+         " + ",
+         paste(names(interactions), collapse = " + "))),
+  data = data)
+
+# calculate S_hat 
+lpm_s_hat <- get_s_hat(lpm_est$coefficients, data)
+
+#### MRC ####
+
+theta_probit <- 
+  probit_est$coefficients[!names(probit_est$coefficients) %in% "(Intercept)"]
+theta_probit <- theta_probit[!is.na(theta_probit)]
+
+theta_logit <-
+  logit_est$coefficients[!names(logit_est$coefficients) %in% "(Intercept)"]
+theta_logit <- theta_logit[!is.na(theta_logit)]
+
+theta_lpm <- 
+  lpm_est$coefficients[!names(lpm_est$coefficients) %in% "(Intercept)"]
+theta_lpm <- theta_lpm[!is.na(theta_lpm)]
+
+# Run the Nelder-Mead-Head simplex from each pilot, take the maximum
+n_perturb <- 5 # n_perturb random perturbations of each pilot point
+n_random <- 10 # n_random randomly generated starting points
+
+temp_varlist <- names(theta_probit)
+temp_varlist <- gsub("TRUE", "", temp_varlist)
+
+candidates <- vector(mode = "list", length = 3 + 3 * n_perturb + n_random)
+
+candidates[[1]] <- optim(par = theta_probit, 
+                         fn = S_theta, 
+                         method = "Nelder-Mead", 
+                         data = data, 
+                         varnames = temp_varlist, 
+                         control = list("fnscale" = -1))
+
+candidates[[2]] <- optim(par = theta_logit, 
+                         fn = S_theta, 
+                         method = "Nelder-Mead", 
+                         data = data, 
+                         varnames = temp_varlist, 
+                         control = list("fnscale" = -1))
+
+candidates[[3]] <- optim(par = theta_lpm, 
+                         fn = S_theta, 
+                         method = "Nelder-Mead", 
+                         data = data, 
+                         varnames = temp_varlist, 
+                         control = list("fnscale" = -1))
+
+# perturbations of theta probit
+theta_probit <- theta_probit / sqrt(sum(theta_probit ^ 2))
+for (p in 1:n_perturb){
+  probit_perturbed <- theta_probit * 
+    sample(c(0.9, 1.1), length(theta_probit), replace = TRUE)
+  candidates[[3 + p]] <- optim(par = probit_perturbed, 
+                               fn = S_theta, 
+                               method = "Nelder-Mead", 
+                               data = data, 
+                               varnames = temp_varlist, 
+                               control = list("fnscale" = -1))
+}
+
+# perturbations of theta logit
+theta_logit <- theta_logit / sqrt(sum(theta_logit ^ 2))
+for (p in 1:n_perturb){
+  
+  logit_perturbed <- theta_logit * 
+    sample(c(0.9, 1.1), length(theta_logit), replace = TRUE)
+  
+  candidates[[3 + n_perturb + p]] <- optim(par = logit_perturbed, 
+                                           fn = S_theta, 
+                                           method = "Nelder-Mead", 
+                                           data = data, 
+                                           varnames = temp_varlist, 
+                                           control = list("fnscale" = -1))
+}
+
+# perturbations of theta lpm
+theta_lpm <- theta_lpm / sqrt(sum(theta_lpm ^ 2))
+for (p in 1:n_perturb){
+  
+  lpm_perturbed <- theta_lpm * 
+    sample(c(0.9, 1.1), length(theta_lpm), replace = TRUE)
+  
+  candidates[[3 + (2 * n_perturb) + p]] <- 
+    optim(par = lpm_perturbed, 
+          fn = S_theta, 
+          method = "Nelder-Mead", 
+          data = data, 
+          varnames = temp_varlist, 
+          control = list("fnscale" = -1))
+}
+
+# randomly generated starting points
+for (p in 1:n_random){
+  
+  theta_random <- runif(length(theta_probit), -1, 1) 
+  theta_random <- theta_random / sqrt(sum(theta_random ^ 2))
+  
+  candidates[[3 + (3 * n_perturb) + p]] <- 
+    optim(par = theta_random, 
+          fn = S_theta, 
+          method = "Nelder-Mead", 
+          data = data, 
+          varnames = temp_varlist, 
+          control = list("fnscale" = -1))
+  
+}
+
+# Choose the best performing value
+j <- which.max(sapply(candidates, getElement, "value"))
+mrc_est <- candidates[[j]]$par
+mrc_est <- mrc_est / sqrt(sum(mrc_est ^ 2)) # scale to be length 1
+
+# calculate S_hat 
+mrc_s_hat <- get_s_hat(mrc_est, data)
+
+# drop interactions from the data
+data <- dplyr::select(data, - starts_with("Z_"))
+
+#### SECOND STAGE ####
 
 for (i in 1:4){
   
   #### PROBIT ####
   
-  # coefficient estimates
-  probit_est <- glm(as.formula(
-    paste0("D ~ Z + ", 
-           paste(varlist, collapse = " + "),
-           " + ",
-           paste(names(interactions), collapse = " + "))),
-    family = binomial(link = "probit"),
-    data = data)
-  
-  # calculate S_hat 
-  probit_s_hat <- get_s_hat(probit_est$coefficients, data)
+  # sum of observations where we have defiers 
+  probit_share <- sum((probit_s_hat == -1)[!is.na(data[Ylist[i]])]) / 
+    sum(!is.na(data[Ylist[i]]))
   
   # get the estimator
-  probit_tau <- sum(data[[Ylist[i]]] * probit_s_hat * Z_tilde) / 
-    sum(data$D * probit_s_hat * Z_tilde)
+  probit_tau <- sum(data[Ylist[i]] * probit_s_hat * Z_tilde, na.rm = T) / 
+    sum((data$D * logit_s_hat * Z_tilde)[!is.na(data[[Ylist[i]]])])
   
   # standard error
-  probit_se <- calc_sd(data, Z_tilde, probit_tau, probit_s_hat, varlist, Ylist[i]) / 
-    sqrt(nrow(data))
+  vars <- gsub("TRUE", "", names(probit_est$coefficients))
+  vars <- Xlist[Xlist %in% vars[!is.na(probit_est$coefficients)]]
+  probit_se <- calc_sd(data, Z_tilde, probit_tau, probit_s_hat, vars, Ylist[i]) / 
+    sqrt(sum(!is.na(data[Ylist[i]])))
   
-  probit_results[1, i] <- probit_tau
-  probit_results[2, i] <- probit_se
+  probit[[i]] <- list(est = probit_est,
+                      share = probit_share,
+                      tau = probit_tau,
+                      se = probit_se)
+  
+  #### LOGIT ####
+  
+  # sum of observations where we have defiers 
+  logit_share <- sum((logit_s_hat == -1)[!is.na(data[Ylist[i]])]) / 
+    sum(!is.na(data[Ylist[i]]))
+  
+  # get the estimator
+  logit_tau <- sum(data[Ylist[i]] * logit_s_hat * Z_tilde, na.rm = T) / 
+    sum((data$D * logit_s_hat * Z_tilde)[!is.na(data[[Ylist[i]]])])
+  
+  # standard error
+  vars <- gsub("TRUE", "", names(logit_est$coefficients))
+  vars <- Xlist[Xlist %in% vars[!is.na(logit_est$coefficients)]]
+  logit_se <- calc_sd(data, Z_tilde, logit_tau, logit_s_hat, vars, Ylist[i]) / 
+    sqrt(sum(!is.na(data[Ylist[i]])))
+  
+  logit[[i]] <- list(est = logit_est,
+                     share = logit_share,
+                     tau = logit_tau,
+                     se = logit_se)
   
   #### LPM ####
   
-  # coefficient estimates
-  lpm_est <- lm(as.formula(
-    paste0("D ~ Z + ", 
-           paste(varlist, collapse = " + "),
-           " + ",
-           paste(names(interactions), collapse = " + "))),
-    data = data)
-  
-  # calculate S_hat 
-  lpm_s_hat <- get_s_hat(lpm_est$coefficients, data)
+  # sum of observations where we have defiers 
+  lpm_share <- sum((lpm_s_hat == -1)[!is.na(data[Ylist[i]])]) / 
+    sum(!is.na(data[Ylist[i]]))
   
   # get the estimator
-  lpm_tau <- sum(data[[Ylist[i]]] * lpm_s_hat * Z_tilde) / 
-    sum(data$D * lpm_s_hat * Z_tilde)
+  lpm_tau <- sum(data[Ylist[i]] * lpm_s_hat * Z_tilde, na.rm = T) / 
+    sum((data$D * lpm_s_hat * Z_tilde)[!is.na(data[[Ylist[i]]])])
   
   # standard error
-  lpm_se <- calc_sd(data, Z_tilde, lpm_tau, lpm_s_hat, varlist, Ylist[i]) / 
-    sqrt(nrow(data))
+  vars <- gsub("TRUE", "", names(lpm_est$coefficients))
+  vars <- Xlist[Xlist %in% vars[!is.na(lpm_est$coefficients)]]
+  lpm_se <- calc_sd(data, Z_tilde, lpm_tau, lpm_s_hat, vars, Ylist[i]) / 
+    sqrt(sum(!is.na(data[Ylist[i]])))
   
-  lpm_results[1, i] <- lpm_tau
-  lpm_results[2, i] <- lpm_se
+  lpm[[i]] <- list(est = lpm_est,
+                   share = lpm_share,
+                   tau = lpm_tau,
+                   se = lpm_se)
+  
+  #### MRC ####
+  
+  # sum of observations where we have defiers 
+  mrc_share <- sum((mrc_s_hat == -1)[!is.na(data[Ylist[i]])]) / 
+    sum(!is.na(data[Ylist[i]]))
+  
+  # get the estimator
+  mrc_tau <- sum(data[Ylist[i]] * mrc_s_hat * Z_tilde, na.rm = T) / 
+    sum((data$D * mrc_s_hat * Z_tilde)[!is.na(data[[Ylist[i]]])])
+  
+  # standard error
+  vars <- gsub("TRUE", "", names(mrc_est))
+  vars <- Xlist[Xlist %in% vars[!is.na(mrc_est)]]
+  mrc_se <- calc_sd(data, Z_tilde, mrc_tau, mrc_s_hat, vars, Ylist[i]) / 
+    sqrt(sum(!is.na(data[Ylist[i]])))
+  
+  mrc[[i]] <- list(est = mrc_est,
+                   share = mrc_share,
+                   tau = mrc_tau,
+                   se = mrc_se)
   
 }
 
+lpm_est <- lpm_est$coefficients
+probit_est <- probit_est$coefficients
+logit_est <- logit_est$coefficients
+
+for (i in 1:4){
+  
+  probit[[i]]$est <- probit_est
+  logit[[i]]$est <- logit_est
+  lpm[[i]]$est <- lpm_est
+  
+}
+
+for (i in 1:4){
+  
+  tsls[[i]] <- tsls[[i]]$coefficients
+  
+}
+
+angrist_evans_results <- list(tsls = tsls,
+                              probit = probit,
+                              logit = logit,
+                              lpm = lpm,
+                              mrc = mrc)
+
+saveRDS(angrist_evans_results, file = paste0(path, "angrist_evans_results.rds"))
+
+reordered_IV_table <- matrix(0, 3, 4)
+
+for (i in 1:4){
+  
+  reordered_IV_table[1, i] <- mrc[[i]]$tau
+  reordered_IV_table[2, i] <- mrc[[i]]$se
+  reordered_IV_table[3, i] <- mrc[[i]]$share
+  
+  
+}
+
+colnames(reordered_IV_table) <- Ylist
+rownames(reordered_IV_table) <- c("Estimate", "Std. Error", "share")
+
+xtable(tsls_table[, c(2, 1, 3, 4)], digits = 3)
+xtable(reordered_IV_table[, c(2, 1, 3, 4)], digits = 3)
