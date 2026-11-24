@@ -118,10 +118,11 @@ data <- dplyr::filter(data, is.na(yr_ed) == F)
 data <- dplyr::rename(data, Z = same_sex, D = morekids)
 
 Ylist <- c("wkswork1", "worked", "uhrswork", "inctot")
-Xlist <- c("black", "oth", "hispan", "bpl", "sp_bpl", "age", "age_fst", "yr_ed")
+Xlist <- c("raced", "hispan", "bpl", "sp_bpl", "age", "age_fst", "yr_ed")
 
 data$Z <- as.numeric(data$Z)
 data$D <- as.numeric(data$D)
+data$hispan <- as.numeric(data$hispan)
 
 ############################## SUMMARY STATISTICS ##############################
 
@@ -129,10 +130,11 @@ data$D <- as.numeric(data$D)
 sum((data$bpl != 0) * (data$sp_bpl == 0))
 # US mother, immigrant father
 sum((data$bpl == 0) * (data$sp_bpl != 0))
-# US couple
-sum((data$bpl == 0) * (data$sp_bpl == 0))
 # immigrant couple
 sum((data$bpl != 0) * (data$sp_bpl != 0))
+# US couple
+sum((data$bpl == 0) * (data$sp_bpl == 0))
+
 
 # counts for each birthplace
 vals <- length(unique(data$bpl))
@@ -156,12 +158,39 @@ sp_bpl_drop <- sp_bpl_table[, 1][sp_bpl_table[, 2] <= 10]
 data <- data[!(data$bpl %in% bpl_drop), ]
 data <- data[!(data$sp_bpl %in% sp_bpl_drop), ]
 
+# Counts for each race
+vals <- length(unique(data$raced))
+
+raced_table <- matrix(0, nrow = vals, ncol = 2)
+raced_table[, 1] <- sort(unique(data$raced))
+raced_table[, 2] <- tabulate(as.factor(data$raced))
+
+vals <- length(unique(data$sp_raced))
+data <- data[order(data$sp_raced), ]
+
+sp_raced_table <- matrix(0, nrow = vals, ncol = 2)
+sp_raced_table[, 1] <- sort(unique(data$sp_raced))
+sp_raced_table[, 2] <- tabulate(as.factor(data$sp_raced))
+
+# drop any raced or spl_raced that occurs less than 10 times (arbitrary)
+raced_drop <- raced_table[, 1][raced_table[, 2] <= 10]
+sp_raced_drop <- sp_raced_table[, 1][sp_raced_table[, 2] <= 10]
+
+data <- data[!(data$raced %in% raced_drop), ]
+data <- data[!(data$sp_raced %in% sp_raced_drop), ]
 
 ##################################### TSLS #####################################
 
 store <- data
+
+# codes for sex: 1 -> boy, 2 -> girl
+data <- dplyr::filter(data, sex.1 == 2)
+data$age <- as.factor(data$age)
+data$age_fst <- as.factor(data$age_fst)
 data$bpl <- as.factor(data$bpl)
 data$sp_bpl <- as.factor(data$sp_bpl)
+data$raced <- as.factor(data$raced)
+data$sp_raced <- as.factor(data$sp_raced)
 
 tsls <- vector(mode = "list", length = 4)
 
@@ -209,9 +238,14 @@ rm(Z_hat)
 rm(data)
 data <- store
 
+# codes for sex: 1 -> boy, 2 -> girl
+data <- dplyr::filter(data, sex.1 == 2)
+
 # generate fixed effects
 n <- nrow(data)
+
 bpl_vals <- sort(unique(data$bpl))
+bpl_vals <- bpl_vals[2:length(bpl_vals)]
 n_vals <- length(bpl_vals)
 bpl_fe <- matrix(0, n, n_vals)
 colnames(bpl_fe) <- paste0("bpl_", bpl_vals)
@@ -225,6 +259,7 @@ for (i in 1:n_vals){
 bpl_fe <- data.frame(bpl_fe)
 
 sp_bpl_vals <- sort(unique(data$sp_bpl))
+sp_bpl_vals <- sp_bpl_vals[2:length(sp_bpl_vals)]
 n_vals <- length(sp_bpl_vals)
 sp_bpl_fe <- matrix(0, n, n_vals)
 colnames(sp_bpl_fe) <- paste0("sp_bpl_", sp_bpl_vals)
@@ -237,9 +272,75 @@ for (i in 1:n_vals){
 
 sp_bpl_fe <- data.frame(sp_bpl_fe)
 
-data <- cbind(data, bpl_fe, sp_bpl_fe)
+raced_vals <- sort(unique(data$raced))
+raced_vals <- raced_vals[2:length(raced_vals)]
+n_vals <- length(raced_vals)
+raced_fe <- matrix(0, n, n_vals)
+colnames(raced_fe) <- paste0("raced_", raced_vals)
+
+for (i in 1:n_vals){
+  
+  raced_fe[, i] <- as.numeric(data$raced == raced_vals[i])
+  
+}
+
+raced_fe <- data.frame(raced_fe)
+
+sp_raced_vals <- sort(unique(data$sp_raced))
+sp_raced_vals <- sp_raced_vals[2:length(sp_raced_vals)]
+n_vals <- length(sp_raced_vals)
+sp_raced_fe <- matrix(0, n, n_vals)
+colnames(sp_raced_fe) <- paste0("sp_raced_", sp_raced_vals)
+
+for (i in 1:n_vals){
+  
+  sp_raced_fe[, i] <- as.numeric(data$sp_raced == sp_raced_vals[i])
+  
+}
+
+sp_raced_fe <- data.frame(sp_raced_fe)
+
+age_vals <- sort(unique(data$age))
+age_vals <- age_vals[2:length(age_vals)]
+n_vals <- length(age_vals)
+age_fe <- matrix(0, n, n_vals)
+colnames(age_fe) <- paste0("age_", age_vals)
+
+for (i in 1:n_vals){
+  
+  age_fe[, i] <- as.numeric(data$age == age_vals[i])
+  
+}
+
+age_fe <- data.frame(age_fe)
+
+age_fst_vals <- sort(unique(data$age_fst))
+age_fst_vals <- age_fst_vals[2:length(age_fst_vals)]
+n_vals <- length(age_fst_vals)
+age_fst_fe <- matrix(0, n, n_vals)
+colnames(age_fst_fe) <- paste0("age_fst_", age_fst_vals)
+
+for (i in 1:n_vals){
+  
+  age_fst_fe[, i] <- as.numeric(data$age_fst == age_fst_vals[i])
+  
+}
+
+age_fst_fe <- data.frame(age_fst_fe)
+
+data <- cbind(data, bpl_fe, sp_bpl_fe, raced_fe, sp_raced_fe, age_fe, age_fst_fe)
 Xlist <- Xlist[grep("bpl", Xlist, invert = T)]
-Xlist <- c(Xlist, names(bpl_fe), names(sp_bpl_fe))
+Xlist <- Xlist[grep("raced", Xlist, invert = T)]
+Xlist <- Xlist[grep("age", Xlist, invert = T)]
+Xlist <- Xlist[grep("age_fst", Xlist, invert = T)]
+
+Xlist <- c(Xlist,
+           names(bpl_fe),
+           names(sp_bpl_fe),
+           names(raced_fe),
+           names(sp_raced_fe),
+           names(age_fe),
+           names(age_fst_fe))
 
 interactions <- matrix(
   unlist(
@@ -285,10 +386,10 @@ probit_est <- glm(as.formula(
          " + ",
          paste(names(interactions), collapse = " + "))),
   family = binomial(link = "probit"),
-  data = data)
+  data = data)$coefficients
 
 # calculate S_hat 
-probit_s_hat <- get_s_hat(probit_est$coefficients, data)
+probit_s_hat <- get_s_hat(probit_est, data)
 
 #### LOGIT ####
 
@@ -299,10 +400,10 @@ logit_est <- glm(as.formula(
          " + ",
          paste(names(interactions), collapse = " + "))),
   family = binomial(link = "logit"),
-  data = data)
+  data = data)$coefficients
 
 # calculate S_hat 
-logit_s_hat <- get_s_hat(logit_est$coefficients, data)
+logit_s_hat <- get_s_hat(logit_est, data)
 
 #### LPM ####
 
@@ -312,23 +413,20 @@ lpm_est <- lm(as.formula(
          paste(Xlist, collapse = " + "),
          " + ",
          paste(names(interactions), collapse = " + "))),
-  data = data)
+  data = data)$coefficients
 
 # calculate S_hat 
-lpm_s_hat <- get_s_hat(lpm_est$coefficients, data)
+lpm_s_hat <- get_s_hat(lpm_est, data)
 
 #### MRC ####
 
-theta_probit <- 
-  probit_est$coefficients[!names(probit_est$coefficients) %in% "(Intercept)"]
+theta_probit <- probit_est[!names(probit_est) %in% "(Intercept)"]
 theta_probit <- theta_probit[!is.na(theta_probit)]
 
-theta_logit <-
-  logit_est$coefficients[!names(logit_est$coefficients) %in% "(Intercept)"]
+theta_logit <- logit_est[!names(logit_est) %in% "(Intercept)"]
 theta_logit <- theta_logit[!is.na(theta_logit)]
 
-theta_lpm <- 
-  lpm_est$coefficients[!names(lpm_est$coefficients) %in% "(Intercept)"]
+theta_lpm <- lpm_est[!names(lpm_est) %in% "(Intercept)"]
 theta_lpm <- theta_lpm[!is.na(theta_lpm)]
 
 # Run the Nelder-Mead-Head simplex from each pilot, take the maximum
@@ -422,7 +520,7 @@ for (p in 1:n_random){
 }
 
 # Choose the best performing value
-j <- which.max(sapply(candidates, getElement, "value"))
+j <- which.max(sapply(candidates[1:3], getElement, "value"))
 mrc_est <- candidates[[j]]$par
 mrc_est <- mrc_est / sqrt(sum(mrc_est ^ 2)) # scale to be length 1
 
@@ -447,8 +545,8 @@ for (i in 1:4){
     sum((data$D * logit_s_hat * Z_tilde)[!is.na(data[[Ylist[i]]])])
   
   # standard error
-  vars <- gsub("TRUE", "", names(probit_est$coefficients))
-  vars <- Xlist[Xlist %in% vars[!is.na(probit_est$coefficients)]]
+  vars <- gsub("TRUE", "", names(probit_est))
+  vars <- Xlist[Xlist %in% vars[!is.na(probit_est)]]
   probit_se <- calc_sd(data, Z_tilde, probit_tau, probit_s_hat, vars, Ylist[i]) / 
     sqrt(sum(!is.na(data[Ylist[i]])))
   
@@ -468,8 +566,8 @@ for (i in 1:4){
     sum((data$D * logit_s_hat * Z_tilde)[!is.na(data[[Ylist[i]]])])
   
   # standard error
-  vars <- gsub("TRUE", "", names(logit_est$coefficients))
-  vars <- Xlist[Xlist %in% vars[!is.na(logit_est$coefficients)]]
+  vars <- gsub("TRUE", "", names(logit_est))
+  vars <- Xlist[Xlist %in% vars[!is.na(logit_est)]]
   logit_se <- calc_sd(data, Z_tilde, logit_tau, logit_s_hat, vars, Ylist[i]) / 
     sqrt(sum(!is.na(data[Ylist[i]])))
   
@@ -489,8 +587,8 @@ for (i in 1:4){
     sum((data$D * lpm_s_hat * Z_tilde)[!is.na(data[[Ylist[i]]])])
   
   # standard error
-  vars <- gsub("TRUE", "", names(lpm_est$coefficients))
-  vars <- Xlist[Xlist %in% vars[!is.na(lpm_est$coefficients)]]
+  vars <- gsub("TRUE", "", names(lpm_est))
+  vars <- Xlist[Xlist %in% vars[!is.na(lpm_est)]]
   lpm_se <- calc_sd(data, Z_tilde, lpm_tau, lpm_s_hat, vars, Ylist[i]) / 
     sqrt(sum(!is.na(data[Ylist[i]])))
   
@@ -522,18 +620,6 @@ for (i in 1:4){
   
 }
 
-lpm_est <- lpm_est$coefficients
-probit_est <- probit_est$coefficients
-logit_est <- logit_est$coefficients
-
-for (i in 1:4){
-  
-  probit[[i]]$est <- probit_est
-  logit[[i]]$est <- logit_est
-  lpm[[i]]$est <- lpm_est
-  
-}
-
 for (i in 1:4){
   
   tsls[[i]] <- tsls[[i]]$coefficients
@@ -546,7 +632,7 @@ angrist_evans_results <- list(tsls = tsls,
                               lpm = lpm,
                               mrc = mrc)
 
-saveRDS(angrist_evans_results, file = paste0(path, "angrist_evans_results.rds"))
+saveRDS(angrist_evans_results, file = paste0(path, "angrist_evans_results_girls.rds"))
 
 reordered_IV_table <- matrix(0, 3, 4)
 

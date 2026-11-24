@@ -393,13 +393,14 @@ kids$flag_qkids <- as.numeric(
   (kids$flag_age_sex.1 + kids$flag_age_sex.2 + kids$flag_age_sex.3) > 0)
 
 
-# Cut down to what we need (NEED TO RETAIN AGE OF THE OLDEST CHILD!)
+# Cut down to what we need (NEED TO RETAIN AGE AND SEX OF THE OLDEST CHILD!)
 kids <- kids[names(kids) %in% c("mom_id", 
                                 "same_sex", 
                                 "flag_18_plus", 
                                 "multi2nd",
                                 "triplets",
                                 "flag_qkids",
+                                "sex.1",
                                 "age.1",
                                 "birthqtr.1")]
 names(kids)[1] <- "id"
@@ -410,12 +411,20 @@ saveRDS(object = kids, file = paste0(path, "/Applications/kid_data.rds"))
 
 # spouses <- readRDS(file = paste0(path, "/Applications/spouses.rds"))
 
-# Want bpl, years of immigration and quality flags
+# Want bpl, years of immigration, race, and quality flags
 spouses <- 
-  spouses[names(spouses) %in% c("sp_id", "bpl", "yrimmig", "flag_imm")]
+  spouses[names(spouses) %in% c("sp_id", 
+                                "bpl", 
+                                "raced", 
+                                "yrimmig", 
+                                "flag_imm",
+                                "flag_race")]
 
-spouses <- spouses[c("sp_id", "bpl", "yrimmig", "flag_imm")]
-names(spouses) <- c("id", "sp_bpl", "sp_yrimmg", "sp_flag")
+spouses$sp_flag <- (spouses$flag_race + spouses$flag_imm > 0)
+spouses <- dplyr::select(spouses, -flag_race, - flag_imm)
+
+spouses <- spouses[c("sp_id", "bpl", "yrimmig", "raced", "sp_flag")]
+names(spouses) <- c("id", "sp_bpl", "sp_yrimmg", "sp_raced", "sp_flag")
 
 ##################################### MERGE ####################################
 
@@ -443,13 +452,13 @@ saveRDS(object = mothers, file = paste0(path, "/Applications/mom_data.rds"))
 
 # drop unused columns
 keep <- c("nchild", "age", "birthqtr", "marst", "marrno", "agemarr", "chborn",
-          "race", "hispan", "bpl", "yrimmig", "educ", "educd", "wkswork1",
+          "raced", "hispan", "bpl", "yrimmig", "educ", "educd", "wkswork1",
           "uhrswork", "qagemarr", "qchborn", "qmarrno", "qmarst","qbirthmo",
           "qmarrqtr", "qeduc", "qempstat", "qocc", "inctot_bot_code",
           "inctot_top_code", "inctot", "qinctot", "worked", "flag_age_sex",
-          "flag_race", "flag_imm", "kid_count", "age.1", "birthqtr.1",
+          "flag_race", "flag_imm", "kid_count", "sex.1", "age.1", "birthqtr.1",
           "same_sex", "flag_18_plus", "multi2nd", "triplets", "flag_qkids",
-          "sp_bpl", "sp_yrimmg", "sp_flag")
+          "sp_bpl", "sp_yrimmg", "sp_raced", "sp_flag")
 
 mothers <- mothers[names(mothers) %in% keep]
 
@@ -549,9 +558,9 @@ mothers <- dplyr::select(mothers,
                          -agemarr)
 
 # form race variables (as in Angrist and Evans)
-mothers <- mutate(mothers, black = (race == 2), oth = (race > 2))
+# mothers <- mutate(mothers, black = (race == 2), oth = (race > 2))
 mothers$hispan <- (mothers$hispan > 0)
-mothers <- select(mothers, - race)
+# mothers <- select(mothers, - race)
 
 # coarsen bpl and sp_bpl: codes < 100 are mainland US, count these as natives
 mothers$bpl <- as.numeric(mothers$bpl) * (as.numeric(mothers$bpl) >= 100)
