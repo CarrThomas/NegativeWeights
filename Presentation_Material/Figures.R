@@ -10,8 +10,187 @@ library(ggplot2)
 library(tidyr)
 library(scales)
 
+# hue_pal()(k) returns the colours that ggplot uses for k different series
+# hue_pal()(3)
+
 path <- getwd()
 save_path <- paste0(path,"/Presentation_Material/")
+
+############################## MOTIVATING EXAMPLE ##############################
+
+# An example where TSLS estimates the wrong sign
+
+# Simple example: natives and immigrants. Both have constant treatment effects.
+
+# Natives are compliers, immigrants are defiers
+# Constant treatment effects for both groups, but they differ
+# Z independent of X
+# Fixed shares of compliers in both groups. 
+
+# parameters for natives
+native <- list()
+native$tau <- - 0.1 # treatment effect
+native$AT <- 1 / 3 # always takers
+native$C <- 1 / 3 # compliers
+native$D <- 0 # defiers
+native$NT <- 1 / 3 # never takers
+
+immig <- list()
+immig$tau <- - 0.4 # treatment effect
+immig$AT <- 1 / 3 # always takers
+immig$C <- 0 # compliers
+immig$D <- 1 / 3 # defiers
+immig$NT <- 1 / 3 # never takers
+
+Pz <- 1 / 2 # Pr(Z = 1)
+
+immig_share <- seq(0, 0.4, length.out = 100)
+
+tau_tsls <- ((1 - immig_share) * (native$C - native$D) * native$tau + 
+               immig_share * (immig$C - immig$D) * immig$tau) / 
+  ((1 - immig_share) * (native$C - native$D) + immig_share * (immig$C - immig$D))
+
+tau_reorder <-  ((1 - immig_share) * abs(native$C - native$D) * native$tau + 
+                   immig_share * abs(immig$C - immig$D) * immig$tau) / 
+  ((1 - immig_share) * abs(native$C - native$D) + immig_share * abs(immig$C - immig$D))
+
+plot_data <- data.frame(share = immig_share, 
+                        tsls = tau_tsls, 
+                        reorder = tau_reorder,
+                        immig = immig$tau,
+                        native = native$tau)
+
+# plot_data %>% ggplot() + 
+#   geom_line(aes(x = share, y = tsls, col = "tsls"),
+#             linewidth = 1) + 
+#   annotate(geom = "text", x = 0.35, y = 0.45, label = "TSLS") + 
+#   geom_line(aes(x = share, y = reorder, col = "reorder"),
+#             linewidth = 1) + 
+#   annotate(geom = "text", x = 0.2, y = -0.2, label = "Reordered IV") + 
+#   geom_hline(aes(yintercept = immig, col = "immig_TE"), 
+#              lty = "dashed", 
+#              linewidth = 1) + 
+#   annotate(geom = "text", x = 0.05, y = -0.35, label = "Immigrants") + 
+#   geom_hline(aes(yintercept = native, col = "native_TE"), 
+#              lty = "dashed",
+#              linewidth = 1) + 
+#   geom_hline(aes(yintercept = 0, col = "xaxis"),
+#              linewidth = 1) + 
+#   theme_bw() + 
+#   theme(legend.title = element_blank()) + 
+#   scale_color_manual(values = c("immig_TE" = "#F8766D",
+#                                 "native_TE" = "#F8766D",
+#                                 "tsls" = "#00BA38",
+#                                 "reorder" = "#619CFF",
+#                                 "xaxis" = "black")) + 
+#   labs(x = "proportion of immigrants",
+#        y = "") + 
+#   theme(legend.position = "null")
+
+####  Just Treatment Effects ####
+
+pdf(paste0(save_path, "Simple_Example_TE.pdf"), width = 4.43, height = 3.92)
+plot_data %>% ggplot() + 
+  geom_hline(aes(yintercept = immig, col = "immig_TE"), 
+             lty = "dashed", 
+             linewidth = 1,
+             show.legend = T) + 
+  geom_hline(aes(yintercept = native, col = "native_TE"), 
+             lty = "dashed",
+             linewidth = 1, 
+             show.legend = F) + 
+  geom_hline(aes(yintercept = 0, col = "xaxis"),
+             linewidth = 1,
+             show.legend = F) + 
+  annotate(geom = "text", x = 0.06, y = -0.35, label = "Immigrants (defiers)") + 
+  annotate(geom = "text", x = 0.06, y = -0.15, label = "Natives (compliers)") +
+  theme_bw() + 
+  theme(legend.title = element_blank(),
+        legend.position = c(0.2, 0.8)) + 
+    lims(y = c(-0.42, 0.52),
+         x = c(-0.005, 0.405)) + 
+  scale_color_manual(values = c("immig_TE" = "#F8766D",
+                                "native_TE" = "#F8766D",
+                                "xaxis" = "black"),
+                     breaks = c("immig_TE"),
+                     labels = c("immig_TE" = "Treatment Effect")) + 
+  labs(x = "Immigrant Share of Population",
+       y = "") 
+dev.off()
+
+#### Treament Effects + TSLS ####
+
+pdf(paste0(save_path, "Simple_Example_TSLS.pdf"), width = 4.43, height = 3.92)
+plot_data %>% ggplot() + 
+  geom_line(aes(x = share, y = tsls, col = "tsls"),
+            linewidth = 1) + 
+  geom_hline(aes(yintercept = immig, col = "immig_TE"), 
+             lty = "dashed", 
+             linewidth = 1,
+             show.legend = T) + 
+  geom_hline(aes(yintercept = native, col = "native_TE"), 
+             lty = "dashed",
+             linewidth = 1, 
+             show.legend = F) + 
+  geom_hline(aes(yintercept = 0, col = "xaxis"),
+             linewidth = 1,
+             show.legend = F) + 
+  annotate(geom = "text", x = 0.06, y = -0.35, label = "Immigrants (defiers)") + 
+  annotate(geom = "text", x = 0.06, y = -0.15, label = "Natives (compliers)") +
+  lims(y = c(-0.42, 0.52),
+       x = c(-0.005, 0.405)) + 
+  theme_bw() + 
+  theme(legend.title = element_blank(),
+        legend.position = c(0.2, 0.8)) + 
+  scale_color_manual(values = c("immig_TE" = "#F8766D",
+                                "native_TE" = "#F8766D",
+                                "tsls" = "#00BA38",
+                                "reorder" = "#619CFF",
+                                "xaxis" = "black"),
+                     breaks = c("tsls", "reorder", "immig_TE"),
+                     labels = c("tsls" = "TSLS",
+                                "reorder" = "Reordered IV",
+                                "immig_TE" = "Treatment Effect")) + 
+  labs(x = "Immigrant Share of Population",
+       y = "")
+dev.off()
+
+#### Treament Effects + TSLS + Reordered ####
+
+pdf(paste0(save_path, "Simple_Example_Full.pdf"), width = 4.43, height = 3.92)
+plot_data %>% ggplot() + 
+  geom_line(aes(x = share, y = tsls, col = "tsls"),
+            linewidth = 1) + 
+  geom_line(aes(x = share, y = reorder, col = "reorder"),
+            linewidth = 1) + 
+  geom_hline(aes(yintercept = immig, col = "immig_TE"), 
+             lty = "dashed", 
+             linewidth = 1,
+             show.legend = T) + 
+  geom_hline(aes(yintercept = native, col = "native_TE"), 
+             lty = "dashed",
+             linewidth = 1, 
+             show.legend = F) + 
+  geom_hline(aes(yintercept = 0, col = "xaxis"),
+             linewidth = 1,
+             show.legend = F) + 
+  lims(y = c(-0.42, 0.52),
+       x = c(-0.005, 0.405)) + 
+  theme_bw() + 
+  theme(legend.title = element_blank(),
+        legend.position = c(0.2, 0.8)) + 
+  scale_color_manual(values = c("immig_TE" = "#F8766D",
+                                "native_TE" = "#F8766D",
+                                "tsls" = "#00BA38",
+                                "reorder" = "#619CFF",
+                                "xaxis" = "black"),
+                     breaks = c("tsls", "reorder", "immig_TE"),
+                     labels = c("tsls" = "TSLS",
+                                "reorder" = "Reordered IV",
+                                "immig_TE" = "Treatment Effect")) + 
+  labs(x = "Immigrant Share of Population",
+       y = "")
+dev.off()
 
 #################### WEAK AND STRONG MONOTONICITY EXAMPLES #####################
 
