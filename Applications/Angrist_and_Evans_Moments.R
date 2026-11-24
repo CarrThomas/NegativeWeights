@@ -70,9 +70,9 @@ data <- subset(data, agem >= 21 & agem <= 35 & kidcount >= 2 &
                  aage2nd == 0 & msample == 1)
 
 varlist <- c("blackm", "hispm", "othracem", "agem", "agefstm")
-Ylist <- c("faminc1", "log_faminc1", "weeksd", "hoursd")
+Ylist <- c("faminc1", "log_faminc1", "weeksm", "hoursm", "income1m")
 
-data <- data[names(data) %in% c("Y", "D", "Z", varlist)]
+data <- data[names(data) %in% c("D", "Z", Ylist, varlist)]
 
 data$Z <- as.numeric(data$Z)
 data$D <- as.numeric(data$D)
@@ -91,4 +91,40 @@ Z_tilde <- data$Z - Z_hat
 moments$tsls_denom <- sum(data$D * Z_tilde) / nrow(data)
 moments$Z_var <- var(data$Z)
 
-sum(data$Y * Z_tilde) / sum(data$D * Z_tilde)
+data$income1m <- as.numeric(data$income1m)
+data$hoursm <- as.numeric(data$hoursm)
+data$weeksm <- as.numeric(data$weeksm)
+data$workedm <- as.numeric(data$weeksm > 0)
+
+sum(data$workedm * Z_tilde) / sum(data$D * Z_tilde)
+sum(data$weeksm * Z_tilde) / sum(data$D * Z_tilde)
+sum(data$hoursm * Z_tilde) / sum(data$D * Z_tilde)
+(sum(data$income1m * Z_tilde) / sum(data$D * Z_tilde)) * 2.099173554
+
+# use hours worked as the example
+moments$tsls_est <- sum(data$hoursm * Z_tilde) / sum(data$D * Z_tilde)
+
+#################################### FIGURES ################################### 
+
+# Range of treatment effects that are compatible with the Angrist and Evans 
+# estimates
+
+n <- 1001
+d_share <- seq(0, 0.1, length.out = n)
+c_share <- (moments$tsls_denom / moments$Z_var) + d_share
+
+t_d <- moments$tsls_est + 2
+w_c <- c_share * moments$Z_var / moments$tsls_denom
+w_d <- - d_share * moments$Z_var / moments$tsls_denom
+t_c <- (moments$tsls_est - w_d * t_d) / w_c
+
+plot_data <- data.frame(d_share = d_share, 
+                        t_d = rep(t_d, n),
+                        t_c = t_c,
+                        tsls = rep(moments$tsls_est, n))
+
+plot_data %>% ggplot() + 
+  geom_line(aes(x = d_share, y = t_c, col = "compliers")) + 
+  geom_line(aes(x = d_share, y = t_d, col = "defiers")) + 
+  geom_line(aes(x = d_share, y = tsls, col = "tsls")) + 
+  theme_bw()
