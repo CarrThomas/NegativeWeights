@@ -55,7 +55,13 @@ data$qtrbthd <- as.integer(data$qtrbthd)
 data$ageqd <- 4 * (80 - data$yobd) - data$qtrbthd
 data$agefstd <- floor((data$ageqd - data$ageqk) / 4)
 
-# outcome variable (log family income)
+# outcome variables
+data$weeksm <- as.numeric(data$weeksm)
+data$workedm <- as.numeric(data$weeksm > 0)
+data$hoursm <- as.numeric(data$hoursm)
+data$incomem <- as.numeric(data$income1m) + pmax(0, as.numeric(data$income2m))
+data$incomem <- data$incomem * 2.099173554
+
 data$faminc1 <- as.numeric(data$faminc)
 data$faminc1 <- data$faminc1 * 2.099173554
 data$log_faminc1 <- log(pmax(data$faminc1 , 1))
@@ -81,7 +87,15 @@ gc()
 
 ################################## GET MOMENTS #################################
 
+# Moments we need:
+# 1) Pr(D = 1|Z = 0)
+# 2) TSLS denominator (Var(Z) * E[p(x,1) - p(x,0)])
+# 3) Variance of Z
+# 4) TSLS estimate
+
 moments <- list()
+
+moments$PD0 <- sum(data$D * (1 - data$Z)) / sum(1 - data$Z)
 
 # Orthogonalise Z
 Z_hat <- lm(as.formula(paste0("Z ~ ", paste(varlist, collapse = " + "))),
@@ -91,18 +105,15 @@ Z_tilde <- data$Z - Z_hat
 moments$tsls_denom <- sum(data$D * Z_tilde) / nrow(data)
 moments$Z_var <- var(data$Z)
 
-data$income1m <- as.numeric(data$income1m)
-data$hoursm <- as.numeric(data$hoursm)
-data$weeksm <- as.numeric(data$weeksm)
-data$workedm <- as.numeric(data$weeksm > 0)
-
-sum(data$workedm * Z_tilde) / sum(data$D * Z_tilde)
-sum(data$weeksm * Z_tilde) / sum(data$D * Z_tilde)
-sum(data$hoursm * Z_tilde) / sum(data$D * Z_tilde)
-(sum(data$income1m * Z_tilde) / sum(data$D * Z_tilde)) * 2.099173554
+# sum(data$workedm * Z_tilde) / sum(data$D * Z_tilde)
+# sum(data$weeksm * Z_tilde) / sum(data$D * Z_tilde)
+# sum(data$hoursm * Z_tilde) / sum(data$D * Z_tilde)
+# (sum(data$income1m * Z_tilde) / sum(data$D * Z_tilde)) * 2.099173554
 
 # use hours worked as the example
 moments$tsls_est <- sum(data$hoursm * Z_tilde) / sum(data$D * Z_tilde)
+
+saveRDS(moments, file = paste0(path, "/Monte_Carlo/AE_moments.rds"))
 
 #################################### FIGURES ################################### 
 
